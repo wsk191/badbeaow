@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
-  UserPlus, Coins, ShieldCheck, Trophy, 
-  Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key
+    Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
+    UserPlus, Coins, ShieldCheck, Trophy, 
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key 
 } from 'lucide-react';
-
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
+    getAuth, 
+    signInAnonymously, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, update, remove, set } from 'firebase/database';
 
@@ -59,8 +58,12 @@ export default function BadmintonApp() {
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
 
-  // Inject Google Font & Animation CSS
+  // Inject Tailwind CSS CDN & Google Font & Animation CSS
   useEffect(() => {
+    const tailwindScript = document.createElement('script');
+    tailwindScript.src = 'https://cdn.tailwindcss.com';
+    document.head.appendChild(tailwindScript);
+
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap';
     link.rel = 'stylesheet';
@@ -81,6 +84,7 @@ export default function BadmintonApp() {
     document.head.appendChild(style);
 
     return () => {
+      document.head.removeChild(tailwindScript);
       document.head.removeChild(link);
       document.head.removeChild(style);
     };
@@ -213,13 +217,22 @@ export default function BadmintonApp() {
   // Handlers (Everyone can do queue & players)
   const handleAddPlayer = async (e) => {
     e.preventDefault();
-    if (!newPlayerName.trim()) return;
+    const trimmedName = newPlayerName.trim();
+    if (!trimmedName) return;
+
+    // เช็คชื่อซ้ำ (ไม่สนตัวพิมพ์เล็ก-ใหญ่)[cite: 1]
+    const isDuplicate = players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase());
+    if (isDuplicate) {
+      showToast('❌ มีชื่อผู้เล่นนี้อยู่ในระบบแล้ว');
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const playersRef = ref(db, 'badbeaow/players');
-      await push(playersRef, { name: newPlayerName.trim(), isPresent: true, debt: 0 });
+      await push(playersRef, { name: trimmedName, isPresent: true, debt: 0 });
       setNewPlayerName('');
-      showToast('เพิ่มผู้เล่นสำเร็จ!');
+      showToast('✅ เพิ่มผู้เล่นสำเร็จ!');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -258,6 +271,49 @@ export default function BadmintonApp() {
 
   const handleCreatePair = async () => {
     if (draftPair.includes(null)) return;
+
+    // 1. เช็คห้ามเลือกชื่อซ้ำกันเองในคู่เดียวกัน (เช่น A กับ A)[cite: 1]
+    if (draftPair[0] === draftPair[1]) {
+      showToast('❌ ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้');
+      return;
+    }
+
+    // จัดเรียง ID เพื่อเทียบความเหมือน (ป้องกันสลับคู่ เช่น A-B กับ B-A)[cite: 1]
+    const sortedDraftIds = [...draftPair].sort();
+
+    // 2. เช็คว่ามีคู่นี้อยู่แล้วใน "คิวรอ" หรือไม่[cite: 1]
+    const isPairExistsInQueue = queue.some(q => {
+      if (!q.pair || q.pair.length !== 2) return false;
+      const qIds = q.pair.map(p => p.id).sort();
+      return qIds[0] === sortedDraftIds[0] && qIds[1] === sortedDraftIds[1];
+    });
+
+    if (isPairExistsInQueue) {
+      showToast('❌ คู่นี้มีอยู่ในคิวรออยู่แล้ว');
+      return;
+    }
+
+    // 3. เช็คว่ามีคู่นี้กำลัง "แข่งขันอยู่บนสนาม" หรือไม่[cite: 1]
+    const activePairs = [court.teamA, court.teamB];
+    const isPairExistsOnCourt = activePairs.some(team => {
+      if (!team || team.length !== 2) return false;
+      const teamIds = team.map(p => p.id).sort();
+      return teamIds[0] === sortedDraftIds[0] && teamIds[1] === sortedDraftIds[1];
+    });
+
+    if (isPairExistsOnCourt) {
+      showToast('❌ คู่นี้กำลังแข่งขันอยู่บนสนาม');
+      return;
+    }
+
+    // 4. เช็คว่าผู้เล่นคนใดคนหนึ่งติดอยู่ในคิวหรือกำลังแข่งอยู่แล้ว[cite: 1]
+    const allBusyIds = new Set([...busyPlayerIds]);
+    const hasBusyPlayer = draftPair.some(id => allBusyIds.has(id));
+    if (hasBusyPlayer) {
+      showToast('❌ มีผู้เล่นบางคนกำลังแข่งขันหรืออยู่ในคิวรอแล้ว');
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const pairData = draftPair.map(id => {
@@ -270,7 +326,7 @@ export default function BadmintonApp() {
       
       await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
       setDraftPair([null, null]);
-      showToast('เพิ่มคู่เข้าคิวรอสำเร็จ!');
+      showToast('✅ เพิ่มคู่เข้าคิวรอสำเร็จ!');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -305,9 +361,9 @@ export default function BadmintonApp() {
   const confirmDeleteQueue = async () => {
     if (!queueToDelete) return;
     setIsProcessing(true);
-    try { 
-      await remove(ref(db, `badbeaow/queue/${queueToDelete}`)); 
-      setQueueToDelete(null);
+    try {
+        await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
+        setQueueToDelete(null);
       showToast('ลบคิวออกแล้ว');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -353,40 +409,35 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  const handleCreatePair = async () => {
-  if (draftPair.includes(null)) return;
+  // ปรับแก้ฟังก์ชันเคลียร์สนาม ให้นำผู้เล่นทั้ง 2 ทีมกลับไปต่อคิวรอ[cite: 1]
+  const handleClearCourt = async () => {
+    setIsProcessing(true);
+    try {
+      const queueRef = ref(db, 'badbeaow/queue');
+      const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
+      
+      let currentMaxOrder = maxOrder;
+      // ส่งทีม A กลับเข้าคิวรอ
+      if (court.teamA) {
+        currentMaxOrder += 100;
+        await push(queueRef, { pair: court.teamA, sortOrder: currentMaxOrder });
+      }
+      // ส่งทีม B กลับเข้าคิวรอ
+      if (court.teamB) {
+        currentMaxOrder += 100;
+        await push(queueRef, { pair: court.teamB, sortOrder: currentMaxOrder });
+      }
 
-  // 1. เช็คว่าเลือกชื่อซ้ำกันเองในคู่เดียวกันหรือไม่ (เช่น เลือก A กับ A)
-  if (draftPair[0] === draftPair[1]) {
-    showToast('❌ ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้');
-    return;
-  }
-
-  // 2. เช็คว่ามีชื่อไหนซ้ำกับคิวรอ หรือคนที่กำลังแข่งอยู่บนสนามแล้วหรือไม่
-  const allBusyIds = new Set([...busyPlayerIds]);
-  const hasDuplicateInQueueOrCourt = draftPair.some(id => allBusyIds.has(id));
-  
-  if (hasDuplicateInQueueOrCourt) {
-    showToast('❌ มีผู้เล่นบางคนอยู่ในคิวรอหรือกำลังแข่งอยู่แล้ว');
-    return;
-  }
-
-  setIsProcessing(true);
-  try {
-    const pairData = draftPair.map(id => {
-      const p = players.find(p => p.id === id);
-      return { id: p.id, name: p.name };
-    });
-
-    const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-    const queueRef = ref(db, 'badbeaow/queue');
-    
-    await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
-    setDraftPair([null, null]);
-    showToast('✅ เพิ่มคู่เข้าคิวรอสำเร็จ!');
-  } catch (error) { console.error(error); }
-  setIsProcessing(false);
-};
+      const courtRef = ref(db, 'badbeaow/court');
+      await set(courtRef, { teamA: null, teamB: null });
+      setCourt({ teamA: null, teamB: null });
+      
+      showToast('เคลียร์สนาม นำผู้เล่นกลับเข้าคิวรอเรียบร้อย');
+    } catch (error) { 
+      console.error(error); 
+    }
+    setIsProcessing(false);
+  };
 
   // Handlers (Payment - Protected by isAdmin)
   const handleAddFixedFee = async () => {
@@ -542,14 +593,14 @@ export default function BadmintonApp() {
                   )}
                   <div className="text-center pt-1">
                     <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white">
-                      เคลียร์สนาม (ว่างทั้งสองฝั่ง)
+                      เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Create Pair Section (Everyone can use) */}
+            {/* Create Pair Section */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
               <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center justify-between">
                 จับคู่เตรียมลงสนาม
@@ -583,7 +634,7 @@ export default function BadmintonApp() {
                   availablePlayers.map(player => {
                     const isSelected = draftPair.includes(player.id);
                     return (
-                      <button
+                      <button 
                         key={player.id}
                         onClick={() => handleDraftSelect(player.id)}
                         className={`px-4 py-2 rounded-xl text-[13px] font-medium transition-all ${
@@ -597,7 +648,7 @@ export default function BadmintonApp() {
                 )}
               </div>
 
-              <button
+              <button 
                 onClick={handleCreatePair}
                 disabled={draftPair.includes(null) || isProcessing}
                 className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${
@@ -611,8 +662,7 @@ export default function BadmintonApp() {
             {/* Queue List */}
             <div>
               <h3 className="text-[15px] font-bold text-gray-800 mb-3 flex items-center justify-between">
-                คิวรอสนาม
-                <span className="text-[11px] font-medium text-gray-500">{queue.length} คู่</span>
+                คิวรอสนาม <span className="text-[11px] font-medium text-gray-500">{queue.length} คู่</span>
               </h3>
               {queue.length === 0 ? (
                 <div className="text-center py-8 bg-white border border-gray-100 rounded-3xl text-gray-400 text-[13px]">ยังไม่มีคิวรอ</div>
@@ -653,6 +703,7 @@ export default function BadmintonApp() {
                 </div>
               )}
             </div>
+
           </div>
         )}
 
@@ -663,11 +714,11 @@ export default function BadmintonApp() {
                 <UserPlus size={18} className="text-purple-500"/> เพิ่มผู้เล่นใหม่
               </h2>
               <form onSubmit={handleAddPlayer} className="flex gap-2">
-                <input
-                  type="text"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  placeholder="ชื่อผู้เล่น..."
+                <input 
+                  type="text" 
+                  value={newPlayerName} 
+                  onChange={(e) => setNewPlayerName(e.target.value)} 
+                  placeholder="ชื่อผู้เล่น..." 
                   disabled={isProcessing}
                   className="flex-1 px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-purple-500"
                 />
@@ -725,7 +776,6 @@ export default function BadmintonApp() {
 
         {activeTab === 'payment' && (
           <div className="p-4 space-y-5">
-            {/* Banner แจ้งเตือนสิทธิ์ระบบเงิน */}
             {!isAdmin && (
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center justify-between">
                 <div>
@@ -755,11 +805,11 @@ export default function BadmintonApp() {
               <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Receipt size={18} className="text-purple-500"/> หารค่าคอร์ต
               </h2>
-              <input
-                type="number"
-                value={totalCourtBill}
-                onChange={(e) => setTotalCourtBill(e.target.value)}
-                placeholder="ยอดบิลรวมทั้งหมด (บาท)"
+              <input 
+                type="number" 
+                value={totalCourtBill} 
+                onChange={(e) => setTotalCourtBill(e.target.value)} 
+                placeholder="ยอดบิลรวมทั้งหมด (บาท)" 
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-sm mb-3 focus:outline-none focus:border-purple-500"
               />
               <button onClick={handleSplitBill} disabled={isProcessing || !totalCourtBill} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-2">
@@ -785,11 +835,11 @@ export default function BadmintonApp() {
                         <div className="text-sm font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
                       </div>
                       <div className="flex gap-2 items-center">
-                        <input
-                          type="number"
-                          value={paymentInputs[player.id] || ''}
-                          onChange={(e) => setPaymentInputs({ ...paymentInputs, [player.id]: e.target.value })}
-                          placeholder="ยอดที่จ่าย..."
+                        <input 
+                          type="number" 
+                          value={paymentInputs[player.id] || ''} 
+                          onChange={(e) => setPaymentInputs({ ...paymentInputs, [player.id]: e.target.value })} 
+                          placeholder="ยอดที่จ่าย..." 
                           className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
                         />
                         <button onClick={() => handlePayDebt(player.id)} disabled={isProcessing} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm flex items-center gap-1">
@@ -841,12 +891,12 @@ export default function BadmintonApp() {
                 <label className="block text-[11px] font-semibold text-gray-600 mb-1">อีเมลแอดมิน</label>
                 <div className="relative">
                   <Mail size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="admin@badbeaow.com"
-                    required
+                  <input 
+                    type="email" 
+                    value={loginEmail} 
+                    onChange={(e) => setLoginEmail(e.target.value)} 
+                    placeholder="admin@badbeaow.com" 
+                    required 
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -856,12 +906,12 @@ export default function BadmintonApp() {
                 <label className="block text-[11px] font-semibold text-gray-600 mb-1">รหัสผ่าน</label>
                 <div className="relative">
                   <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
+                  <input 
+                    type="password" 
+                    value={loginPassword} 
+                    onChange={(e) => setLoginPassword(e.target.value)} 
+                    placeholder="••••••••" 
+                    required 
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -892,7 +942,7 @@ export default function BadmintonApp() {
 
       {/* Delete Player Modal */}
       {playerToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="box-border fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบผู้เล่นนี้ออก?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อนี้จะหายไปจากระบบถาวร</p>
