@@ -353,25 +353,37 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  const handleClearCourt = async () => {
+  const handleCreatePair = async () => {
+  if (draftPair.includes(null)) return;
+
+  // 1. เช็คว่าเลือกชื่อซ้ำกันเองในคู่เดียวกันหรือไม่ (เช่น เลือก A กับ A)
+  if (draftPair[0] === draftPair[1]) {
+    showToast('❌ ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้');
+    return;
+  }
+
+  // 2. เช็คว่ามีชื่อไหนซ้ำกับคิวรอ หรือคนที่กำลังแข่งอยู่บนสนามแล้วหรือไม่
+  const allBusyIds = new Set([...busyPlayerIds]);
+  const hasDuplicateInQueueOrCourt = draftPair.some(id => allBusyIds.has(id));
+  
+  if (hasDuplicateInQueueOrCourt) {
+    showToast('❌ มีผู้เล่นบางคนอยู่ในคิวรอหรือกำลังแข่งอยู่แล้ว');
+    return;
+  }
+
   setIsProcessing(true);
   try {
-    const queueRef = ref(db, 'badbeaow/queue');
-    const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-    
-    // ถ้ามีทีม A ให้ส่งกลับเข้าคิว
-    if (court.teamA) {
-      await push(queueRef, { pair: court.teamA, sortOrder: maxOrder + 100 });
-    }
-    // ถ้ามีทีม B ให้ส่งกลับเข้าคิว
-    if (court.teamB) {
-      const updatedMaxOrder = maxOrder + 200;
-      await push(queueRef, { pair: court.teamB, sortOrder: updatedMaxOrder });
-    }
+    const pairData = draftPair.map(id => {
+      const p = players.find(p => p.id === id);
+      return { id: p.id, name: p.name };
+    });
 
-    // ล้างข้อมูลสนามให้ว่าง
-    await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
-    showToast('เคลียร์สนามและนำผู้เล่นกลับเข้าคิวเรียบร้อย');
+    const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
+    const queueRef = ref(db, 'badbeaow/queue');
+    
+    await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
+    setDraftPair([null, null]);
+    showToast('✅ เพิ่มคู่เข้าคิวรอสำเร็จ!');
   } catch (error) { console.error(error); }
   setIsProcessing(false);
 };
