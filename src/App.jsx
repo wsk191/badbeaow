@@ -9,7 +9,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, update, remove, set } from 'firebase/database';
 
-// Firebase Configuration
+// Firebase Configuration พร้อมระบุ databaseURL ให้ชัดเจน
 const firebaseConfig = {
   apiKey: "AIzaSyDCSbR4h0L-wB2dIS7Z5RuzTn9v1wfq51Q",
   authDomain: "badbeaow.firebaseapp.com",
@@ -23,7 +23,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getDatabase(app);
+// ระบุ URL ของ Realtime Database ลงไปตรงๆ เพื่อป้องกันการเชื่อมต่อผิดพลาด
+const db = getDatabase(app, "https://badbeaow-default-rtdb.asia-southeast1.firebasedatabase.app");
 
 export default function BadmintonApp() {
   const [activeTab, setActiveTab] = useState('queue');
@@ -31,8 +32,8 @@ export default function BadmintonApp() {
   const [loading, setLoading] = useState(true);
 
   // Database State
-  const [playersObj, setPlayersObj] = useState({});
-  const [queueObj, setQueueObj] = useState({});
+  const [players, setPlayers] = useState([]);
+  const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
 
   // Local UI State
@@ -44,16 +45,6 @@ export default function BadmintonApp() {
   const [toastMessage, setToastMessage] = useState(null);
   const [highlightedQueueId, setHighlightedQueueId] = useState(null);
   const [queueToDelete, setQueueToDelete] = useState(null);
-
-  // แปลง Object จาก Realtime Database ให้เป็น Array พร้อมใช้งาน
-  const players = useMemo(() => {
-    return Object.keys(playersObj).map(key => ({ id: key, ...playersObj[key] })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [playersObj]);
-
-  const queue = useMemo(() => {
-    const list = Object.keys(queueObj).map(key => ({ id: key, ...queueObj[key] }));
-    return list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  }, [queueObj]);
 
   // Inject Google Font & Animation CSS
   useEffect(() => {
@@ -112,14 +103,28 @@ export default function BadmintonApp() {
     // Listen to Players
     const playersRef = ref(db, 'badbeaow/players');
     const unsubPlayers = onValue(playersRef, (snapshot) => {
-      setPlayersObj(snapshot.val() || {});
+      const data = snapshot.val();
+      if (data) {
+        const loadedPlayers = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        loadedPlayers.sort((a, b) => a.name.localeCompare(b.name));
+        setPlayers(loadedPlayers);
+      } else {
+        setPlayers([]);
+      }
       setLoading(false);
     });
 
     // Listen to Queue
     const queueRef = ref(db, 'badbeaow/queue');
     const unsubQueue = onValue(queueRef, (snapshot) => {
-      setQueueObj(snapshot.val() || {});
+      const data = snapshot.val();
+      if (data) {
+        const loadedQueue = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        loadedQueue.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        setQueue(loadedQueue);
+      } else {
+        setQueue([]);
+      }
     });
 
     // Listen to Court
@@ -571,25 +576,29 @@ export default function BadmintonApp() {
                 </div>
               </div>
               <div className="divide-y divide-gray-50">
-                {players.map((player) => (
-                  <div key={player.id} className="p-4 flex justify-between items-center">
-                    <div>
-                      <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'}`}>
-                        {player.name}
+                {players.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีรายชื่อผู้เล่น เพิ่มชื่อด้านบนได้เลย</div>
+                ) : (
+                  players.map((player) => (
+                    <div key={player.id} className="p-4 flex justify-between items-center">
+                      <div>
+                        <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'}`}>
+                          {player.name}
+                        </div>
+                        {player.debt > 0 && (
+                          <div className="text-[11px] font-bold text-red-500 mt-0.5">ค้างจ่าย: {player.debt.toFixed(2)} ฿</div>
+                        )}
                       </div>
-                      {player.debt > 0 && (
-                        <div className="text-[11px] font-bold text-red-500 mt-0.5">ค้างจ่าย: {player.debt.toFixed(2)} ฿</div>
-                      )}
+                      <button 
+                        onClick={() => togglePresence(player.id, player.isPresent)}
+                        disabled={isProcessing}
+                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${player.isPresent ? 'bg-purple-500' : 'bg-gray-200'}`}
+                      >
+                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => togglePresence(player.id, player.isPresent)}
-                      disabled={isProcessing}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${player.isPresent ? 'bg-purple-500' : 'bg-gray-200'}`}
-                    >
-                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
