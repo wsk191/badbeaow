@@ -7,9 +7,9 @@ import {
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { getDatabase, ref, onValue, push, update, remove, set } from 'firebase/database';
 
-// Firebase Configuration ที่ดึงมาจากโปรเจกต์ของคุณ
+// Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDCSbR4h0L-wB2dIS7Z5RuzTn9v1wfq51Q",
   authDomain: "badbeaow.firebaseapp.com",
@@ -23,17 +23,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = 'badbeaow-app';
+const db = getDatabase(app);
 
 export default function BadmintonApp() {
   const [activeTab, setActiveTab] = useState('queue');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Firestore Data State
-  const [players, setPlayers] = useState([]);
-  const [queue, setQueue] = useState([]);
+  // Database State
+  const [playersObj, setPlayersObj] = useState({});
+  const [queueObj, setQueueObj] = useState({});
   const [court, setCourt] = useState({ teamA: null, teamB: null });
 
   // Local UI State
@@ -46,7 +45,17 @@ export default function BadmintonApp() {
   const [highlightedQueueId, setHighlightedQueueId] = useState(null);
   const [queueToDelete, setQueueToDelete] = useState(null);
 
-  // Inject Google Font
+  // แปลง Object จาก Realtime Database ให้เป็น Array พร้อมใช้งาน
+  const players = useMemo(() => {
+    return Object.keys(playersObj).map(key => ({ id: key, ...playersObj[key] })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [playersObj]);
+
+  const queue = useMemo(() => {
+    const list = Object.keys(queueObj).map(key => ({ id: key, ...queueObj[key] }));
+    return list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  }, [queueObj]);
+
+  // Inject Google Font & Animation CSS
   useEffect(() => {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap';
@@ -78,6 +87,7 @@ export default function BadmintonApp() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Auth & Realtime Sync
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -97,34 +107,31 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
-    if (!user || !db) return;
+    if (!user) return;
 
     // Listen to Players
-    const playersRef = collection(db, 'artifacts', appId, 'public', 'data', 'players');
-    const unsubPlayers = onSnapshot(playersRef, (snapshot) => {
-      const playersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      playersData.sort((a, b) => a.name.localeCompare(b.name));
-      setPlayers(playersData);
+    const playersRef = ref(db, 'badbeaow/players');
+    const unsubPlayers = onValue(playersRef, (snapshot) => {
+      setPlayersObj(snapshot.val() || {});
       setLoading(false);
-    }, (error) => console.error("Players Error:", error));
+    });
 
     // Listen to Queue
-    const queueRef = collection(db, 'artifacts', appId, 'public', 'data', 'queue');
-    const unsubQueue = onSnapshot(queueRef, (snapshot) => {
-      const queueData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      queueData.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      setQueue(queueData);
-    }, (error) => console.error("Queue Error:", error));
+    const queueRef = ref(db, 'badbeaow/queue');
+    const unsubQueue = onValue(queueRef, (snapshot) => {
+      setQueueObj(snapshot.val() || {});
+    });
 
-    // Listen to Active Court
-    const courtRef = doc(db, 'artifacts', appId, 'public', 'data', 'courts', 'main_court');
-    const unsubCourt = onSnapshot(courtRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setCourt(snapshot.data());
+    // Listen to Court
+    const courtRef = ref(db, 'badbeaow/court');
+    const unsubCourt = onValue(courtRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setCourt(data);
       } else {
-        setDoc(courtRef, { teamA: null, teamB: null });
+        set(courtRef, { teamA: null, teamB: null });
       }
-    }, (error) => console.error("Court Error:", error));
+    });
 
     return () => {
       unsubPlayers();
@@ -149,13 +156,14 @@ export default function BadmintonApp() {
 
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
+  // Handlers
   const handleAddPlayer = async (e) => {
     e.preventDefault();
     if (!newPlayerName.trim() || !user) return;
     setIsProcessing(true);
     try {
-      const playersRef = collection(db, 'artifacts', appId, 'public', 'data', 'players');
-      await addDoc(playersRef, { name: newPlayerName.trim(), isPresent: true, debt: 0 });
+      const playersRef = ref(db, 'badbeaow/players');
+      await push(playersRef, { name: newPlayerName.trim(), isPresent: true, debt: 0 });
       setNewPlayerName('');
       showToast('เพิ่มผู้เล่นสำเร็จ!');
     } catch (error) { console.error(error); }
@@ -165,8 +173,8 @@ export default function BadmintonApp() {
   const togglePresence = async (id, currentStatus) => {
     if (!user) return;
     try {
-      const playerRef = doc(db, 'artifacts', appId, 'public', 'data', 'players', id);
-      await updateDoc(playerRef, { isPresent: !currentStatus });
+      const playerRef = ref(db, `badbeaow/players/${id}`);
+      await update(playerRef, { isPresent: !currentStatus });
       if (currentStatus) setDraftPair(prev => prev.map(slotId => slotId === id ? null : slotId));
     } catch (error) { console.error(error); }
   };
@@ -194,9 +202,9 @@ export default function BadmintonApp() {
       });
 
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-      const queueRef = collection(db, 'artifacts', appId, 'public', 'data', 'queue');
+      const queueRef = ref(db, 'badbeaow/queue');
       
-      await addDoc(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
+      await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
       setDraftPair([null, null]);
       showToast('เพิ่มคู่เข้าคิวรอสำเร็จ!');
     } catch (error) { console.error(error); }
@@ -214,12 +222,12 @@ export default function BadmintonApp() {
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       const targetItem = queue[targetIndex];
 
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', currentItem.id), { 
+      await update(ref(db, `badbeaow/queue/${currentItem.id}`), { 
         sortOrder: targetItem.sortOrder,
         isMoved: true,
         moveDirection: direction
       });
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', targetItem.id), { 
+      await update(ref(db, `badbeaow/queue/${targetItem.id}`), { 
         sortOrder: currentItem.sortOrder,
         isMoved: true,
         moveDirection: direction === 'up' ? 'down' : 'up'
@@ -235,7 +243,7 @@ export default function BadmintonApp() {
     if (!user || !queueToDelete) return;
     setIsProcessing(true);
     try { 
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', queueToDelete)); 
+      await remove(ref(db, `badbeaow/queue/${queueToDelete}`)); 
       setQueueToDelete(null);
       showToast('ลบคิวออกแล้ว');
     } catch (error) { console.error(error); }
@@ -246,10 +254,10 @@ export default function BadmintonApp() {
     if (queue.length < 2 || !user) return;
     setIsProcessing(true);
     try {
-      const courtRef = doc(db, 'artifacts', appId, 'public', 'data', 'courts', 'main_court');
-      await updateDoc(courtRef, { teamA: queue[0].pair, teamB: queue[1].pair });
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', queue[0].id));
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', queue[1].id));
+      const courtRef = ref(db, 'badbeaow/court');
+      await set(courtRef, { teamA: queue[0].pair, teamB: queue[1].pair });
+      await remove(ref(db, `badbeaow/queue/${queue[0].id}`));
+      await remove(ref(db, `badbeaow/queue/${queue[1].id}`));
       showToast('เริ่มการแข่งขันแล้ว!');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -259,15 +267,14 @@ export default function BadmintonApp() {
     if (!user) return;
     setIsProcessing(true);
     try {
-      const courtRef = doc(db, 'artifacts', appId, 'public', 'data', 'courts', 'main_court');
       let nextTeamA = winnerTeam === 'A' ? court.teamA : null;
       let nextTeamB = winnerTeam === 'B' ? court.teamB : null;
       let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
 
+      const queueRef = ref(db, 'badbeaow/queue');
       if (losingTeam) {
         const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-        const queueRef = collection(db, 'artifacts', appId, 'public', 'data', 'queue');
-        await addDoc(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
+        await push(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
       }
 
       if (queue.length > 0) {
@@ -275,10 +282,10 @@ export default function BadmintonApp() {
         const nextPair = nextPairObj.pair;
         if (winnerTeam === 'A') nextTeamB = nextPair;
         if (winnerTeam === 'B') nextTeamA = nextPair;
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'queue', nextPairObj.id));
+        await remove(ref(db, `badbeaow/queue/${nextPairObj.id}`));
       }
       
-      await updateDoc(courtRef, { teamA: nextTeamA, teamB: nextTeamB });
+      await set(ref(db, 'badbeaow/court'), { teamA: nextTeamA, teamB: nextTeamB });
       showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`);
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -288,8 +295,7 @@ export default function BadmintonApp() {
     if (!user) return;
     setIsProcessing(true);
     try {
-      const courtRef = doc(db, 'artifacts', appId, 'public', 'data', 'courts', 'main_court');
-      await updateDoc(courtRef, { teamA: null, teamB: null });
+      await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
       showToast('เคลียร์สนามเรียบร้อย');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -300,8 +306,8 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const promises = presentPlayers.map(p => {
-        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'players', p.id);
-        return updateDoc(ref, { debt: (p.debt || 0) + 10 });
+        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        return update(playerRef, { debt: (p.debt || 0) + 10 });
       });
       await Promise.all(promises);
       showToast(`บวกค่าบำรุง 10 บาทให้ ${presentPlayers.length} คนเรียบร้อย!`);
@@ -316,8 +322,8 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       await Promise.all(presentPlayers.map(p => {
-        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'players', p.id);
-        return updateDoc(ref, { debt: (p.debt || 0) + perPerson });
+        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        return update(playerRef, { debt: (p.debt || 0) + perPerson });
       }));
       setTotalCourtBill('');
       showToast(`หารค่าคอร์ตคนละ ${perPerson.toFixed(2)} บาทเรียบร้อย!`);
@@ -334,8 +340,8 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const newDebt = Math.max(0, (player.debt || 0) - payAmount);
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'players', playerId);
-      await updateDoc(ref, { debt: newDebt });
+      const playerRef = ref(db, `badbeaow/players/${playerId}`);
+      await update(playerRef, { debt: newDebt });
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
       showToast('บันทึกการชำระเงินเรียบร้อย!');
     } catch (error) { console.error(error); }
@@ -503,7 +509,7 @@ export default function BadmintonApp() {
                         </div>
                         <div>
                           <div className="font-semibold text-gray-700 text-sm">
-                            {q.pair.map(p => p.name).join(' & ')}
+                            {q.pair ? q.pair.map(p => p.name).join(' & ') : ''}
                           </div>
                           {q.isMoved && (
                             <div className="text-[10px] text-fuchsia-600 font-bold mt-0.5">
