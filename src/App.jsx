@@ -245,6 +245,14 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
+  const handleDeletePlayerClick = (player) => {
+    if ((player.debt || 0) > 0) {
+      showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
+      return;
+    }
+    setPlayerToDelete(player.id);
+  };
+
   const confirmDeletePlayer = async () => {
     if (!playerToDelete) return;
     setIsProcessing(true);
@@ -439,7 +447,6 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  // เพิ่มค่าบำรุงรายบุคคล (ป้องกันด้วยสิทธิ์ Admin)
   const handleAddIndividualFee = async (playerId, amount = 10) => {
     if (!isAdmin) {
       setShowLoginModal(true);
@@ -516,7 +523,6 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  // ฟังก์ชันเคลียร์หนี้ทั้งหมดทีเดียวสำหรับแอดมิน
   const handleClearAllDebt = async () => {
     if (!isAdmin) {
       setShowLoginModal(true);
@@ -802,7 +808,6 @@ export default function BadmintonApp() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {/* ปุ่มบวกค่าบำรุง 10 บาทเฉพาะบุคคล */}
                         <button 
                           onClick={() => handleAddIndividualFee(player.id, 10)}
                           disabled={isProcessing}
@@ -818,7 +823,7 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                        <button onClick={() => setPlayerToDelete(player.id)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1">
+                        <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1">
                           <Trash2 size={16} />
                         </button>
                       </div>
