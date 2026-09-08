@@ -58,6 +58,15 @@ export default function BadmintonApp() {
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
 
+  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ
+  const getPowerLevel = (wins = 0) => {
+    if (wins >= 20) return { label: 'ระดับเทพ 👑', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
+    if (wins >= 10) return { label: 'มือแข็ง 🔥', color: 'bg-orange-100 text-orange-700 border-orange-300' };
+    if (wins >= 5) return { label: 'มือกลาง ⚡', color: 'bg-blue-100 text-blue-700 border-blue-300' };
+    if (wins >= 2) return { label: 'พอตีได้ 🏸', color: 'bg-green-100 text-green-700 border-green-300' };
+    return { label: 'มือใหม่ 🌱', color: 'bg-gray-100 text-gray-500 border-gray-200' };
+  };
+
   // Inject Tailwind CSS CDN & Google Font & Custom Animations
   useEffect(() => {
     const tailwindScript = document.createElement('script');
@@ -223,6 +232,11 @@ export default function BadmintonApp() {
 
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
+  // จัดเรียงผู้เล่นตามจำนวนรอบที่ชนะ (จากมากไปน้อย) สำหรับ Leaderboard
+  const rankedPlayers = useMemo(() => {
+    return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0));
+  }, [players]);
+
   // Handlers
   const handleAddPlayer = async (e) => {
     e.preventDefault();
@@ -238,14 +252,14 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const playersRef = ref(db, 'badbeaow/players');
-      await push(playersRef, { name: trimmedName, isPresent: true, debt: 0 });
+      // เพิ่ม wins: 0 ในการตั้งค่าเริ่มต้น
+      await push(playersRef, { name: trimmedName, isPresent: true, debt: 0, wins: 0 });
       setNewPlayerName('');
       showToast('เพิ่มผู้เล่นสำเร็จ!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
 
-  // เช็คหนี้ก่อนเปิด Modal ลบผู้เล่น
   const handleDeletePlayerClick = (player) => {
     if ((player.debt || 0) > 0) {
       showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
@@ -400,6 +414,17 @@ export default function BadmintonApp() {
       let nextTeamA = winnerTeam === 'A' ? court.teamA : null;
       let nextTeamB = winnerTeam === 'B' ? court.teamB : null;
       let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
+      let winningTeam = winnerTeam === 'A' ? court.teamA : court.teamB;
+
+      // เพิ่มยอดชนะ (Wins) ให้กับผู้เล่นในทีมที่ชนะ
+      if (winningTeam) {
+        const promises = winningTeam.map(async (player) => {
+          const dbPlayer = players.find(p => p.id === player.id);
+          const currentWins = dbPlayer?.wins || 0;
+          return update(ref(db, `badbeaow/players/${player.id}`), { wins: currentWins + 1 });
+        });
+        await Promise.all(promises);
+      }
 
       const queueRef = ref(db, 'badbeaow/queue');
       if (losingTeam) {
@@ -799,10 +824,16 @@ export default function BadmintonApp() {
                   players.map((player) => (
                     <div key={player.id} className="p-4 flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div>
-                          <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'}`}>
+                        <div className="flex flex-col items-start gap-1">
+                          <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'} flex items-center gap-2`}>
                             {player.name}
                           </div>
+                          {/* แสดง Badge ค่าพลังและจำนวนครั้งที่ชนะ */}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getPowerLevel(player.wins).color}`}>
+                            {getPowerLevel(player.wins).label} (ชนะ {player.wins || 0})
+                          </span>
+                          
+                          {/* ซ่อน/แสดงยอดค้างจ่าย */}
                           {player.debt > 0 && (
                             <div className="text-[11px] font-bold text-red-500 mt-0.5">ค้างจ่าย: {player.debt.toFixed(2)} ฿</div>
                           )}
@@ -824,13 +855,65 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                        {/* ป้องกันการลบถ้ายัังมียอดหนี้ค้าง */}
                         <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1">
                           <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
                   ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* แท็บจัดอันดับ Leaderboard */}
+        {activeTab === 'leaderboard' && (
+          <div className="p-4 space-y-5">
+            <div className="bg-gradient-to-br from-purple-700 to-indigo-900 p-6 rounded-3xl shadow-lg text-white text-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
+                <Trophy size={100} />
+              </div>
+              <Trophy size={42} className="mx-auto mb-3 text-yellow-300 drop-shadow-md" />
+              <h2 className="text-xl font-black mb-1 tracking-wide">ทำเนียบยอดฝีมือ</h2>
+              <p className="text-purple-200 text-[12px] font-medium">ใครชนะบ่อย ค่าพลังยิ่งสูง อันดับยิ่งแรง!</p>
+            </div>
+
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="divide-y divide-gray-50">
+                {rankedPlayers.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีข้อมูลผู้เล่น</div>
+                ) : (
+                  rankedPlayers.map((player, index) => {
+                    let rankColor = 'text-gray-300';
+                    let rankBg = 'bg-gray-50';
+                    if (index === 0) { rankColor = 'text-yellow-600'; rankBg = 'bg-yellow-100 border-yellow-200'; }
+                    else if (index === 1) { rankColor = 'text-slate-500'; rankBg = 'bg-slate-100 border-slate-200'; }
+                    else if (index === 2) { rankColor = 'text-orange-600'; rankBg = 'bg-orange-100 border-orange-200'; }
+
+                    return (
+                      <div key={player.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-sm ${rankColor} ${rankBg}`}>
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                              {player.name}
+                              {index === 0 && <span className="text-[10px]">👑</span>}
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">ชนะทั้งหมด {player.wins || 0} แมตช์</div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <span className={`text-[10px] px-2.5 py-1 rounded-full border font-semibold ${getPowerLevel(player.wins).color}`}>
+                            {getPowerLevel(player.wins).label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -928,18 +1011,25 @@ export default function BadmintonApp() {
       </main>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 shadow-lg z-30">
-        <div className="flex justify-around px-2 py-3">
-          <button onClick={() => setActiveTab('queue')} className={`flex flex-col items-center gap-1 w-24 ${activeTab === 'queue' ? 'text-purple-600 font-bold' : 'text-gray-400'}`}>
-            <Swords size={22} />
-            <span className="text-[10px]">สนาม & คิว</span>
+      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 shadow-lg z-30 pb-safe">
+        <div className="flex justify-between px-2 py-3">
+          <button onClick={() => setActiveTab('queue')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'queue' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Swords size={22} className={activeTab === 'queue' ? 'drop-shadow-sm' : ''} />
+            <span className="text-[10px]">คิวสนาม</span>
           </button>
-          <button onClick={() => setActiveTab('players')} className={`flex flex-col items-center gap-1 w-24 ${activeTab === 'players' ? 'text-purple-600 font-bold' : 'text-gray-400'}`}>
-            <Users size={22} />
-            <span className="text-[10px]">ผู้เล่น</span>
+          
+          <button onClick={() => setActiveTab('players')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'players' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Users size={22} className={activeTab === 'players' ? 'drop-shadow-sm' : ''} />
+            <span className="text-[10px]">รายชื่อ</span>
           </button>
-          <button onClick={() => setActiveTab('payment')} className={`flex flex-col items-center gap-1 w-24 ${activeTab === 'payment' ? 'text-purple-600 font-bold' : 'text-gray-400'}`}>
-            <Wallet size={22} />
+
+          <button onClick={() => setActiveTab('leaderboard')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'leaderboard' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Trophy size={22} className={activeTab === 'leaderboard' ? 'drop-shadow-sm' : ''} />
+            <span className="text-[10px]">จัดอันดับ</span>
+          </button>
+
+          <button onClick={() => setActiveTab('payment')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'payment' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Wallet size={22} className={activeTab === 'payment' ? 'drop-shadow-sm' : ''} />
             <span className="text-[10px]">คิดเงิน</span>
           </button>
         </div>
