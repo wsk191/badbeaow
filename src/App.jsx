@@ -245,6 +245,7 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
+  // เช็คหนี้ก่อนเปิด Modal ลบผู้เล่น
   const handleDeletePlayerClick = (player) => {
     if ((player.debt || 0) > 0) {
       showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
@@ -823,6 +824,7 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
+                        {/* ป้องกันการลบถ้ายัังมียอดหนี้ค้าง */}
                         <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1">
                           <Trash2 size={16} />
                         </button>
