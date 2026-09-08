@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key 
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, AlertCircle 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -53,12 +53,12 @@ export default function BadmintonApp() {
   const [totalCourtBill, setTotalCourtBill] = useState('');
   const [paymentInputs, setPaymentInputs] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
+  const [toast, setToast] = useState({ message: null, type: 'success' }); // type: 'success' หรือ 'error'
   const [highlightedQueueId, setHighlightedQueueId] = useState(null);
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
 
-  // Inject Tailwind CSS CDN & Google Font & Animation CSS
+  // Inject Tailwind CSS CDN & Google Font & Custom Animations
   useEffect(() => {
     const tailwindScript = document.createElement('script');
     tailwindScript.src = 'https://cdn.tailwindcss.com';
@@ -80,6 +80,15 @@ export default function BadmintonApp() {
         z-index: 10;
         position: relative;
       }
+      @keyframes jelly-bounce {
+        0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
+        40% { transform: translate(-50%, 5px) scale(1.05); opacity: 1; }
+        70% { transform: translate(-50%, -3px) scale(0.97); }
+        100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      }
+      .animate-jelly {
+        animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
     `;
     document.head.appendChild(style);
 
@@ -90,9 +99,9 @@ export default function BadmintonApp() {
     };
   }, []);
 
-  const showToast = (message) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast({ message: null, type: 'success' }), 2000); // เด้งสั้นๆ 2 วินาที
   };
 
   // Auth & Realtime Sync
@@ -130,7 +139,7 @@ export default function BadmintonApp() {
       setShowLoginModal(false);
       setLoginEmail('');
       setLoginPassword('');
-      showToast('เข้าสู่ระบบแอดมินสำเร็จ (ปลดล็อกระบบเงิน)');
+      showToast('เข้าสู่ระบบแอดมินสำเร็จ (ปลดล็อกระบบเงิน)', 'success');
     } catch (error) {
       console.error(error);
       setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
@@ -144,7 +153,7 @@ export default function BadmintonApp() {
       await signOut(auth);
       await signInAnonymously(auth);
       setIsAdmin(false);
-      showToast('ออกจากระบบแอดมินแล้ว');
+      showToast('ออกจากระบบแอดมินแล้ว', 'success');
     } catch (error) {
       console.error(error);
     }
@@ -214,16 +223,16 @@ export default function BadmintonApp() {
 
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
-  // Handlers (Everyone can do queue & players)
+  // Handlers
   const handleAddPlayer = async (e) => {
     e.preventDefault();
     const trimmedName = newPlayerName.trim();
     if (!trimmedName) return;
 
-    // เช็คชื่อซ้ำ (ไม่สนตัวพิมพ์เล็ก-ใหญ่)[cite: 1]
+    // ตรวจสอบชื่อซ้ำ (ไม่สนตัวพิมพ์เล็ก-ใหญ่)
     const isDuplicate = players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase());
     if (isDuplicate) {
-      showToast('❌ มีชื่อผู้เล่นนี้อยู่ในระบบแล้ว');
+      showToast('มีชื่อผู้เล่นนี้อยู่ในระบบแล้ว', 'error');
       return;
     }
 
@@ -232,7 +241,7 @@ export default function BadmintonApp() {
       const playersRef = ref(db, 'badbeaow/players');
       await push(playersRef, { name: trimmedName, isPresent: true, debt: 0 });
       setNewPlayerName('');
-      showToast('✅ เพิ่มผู้เล่นสำเร็จ!');
+      showToast('เพิ่มผู้เล่นสำเร็จ!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -243,7 +252,7 @@ export default function BadmintonApp() {
     try {
       await remove(ref(db, `badbeaow/players/${playerToDelete}`));
       setPlayerToDelete(null);
-      showToast('ลบผู้เล่นออกแล้ว');
+      showToast('ลบผู้เล่นออกแล้ว', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -272,16 +281,15 @@ export default function BadmintonApp() {
   const handleCreatePair = async () => {
     if (draftPair.includes(null)) return;
 
-    // 1. เช็คห้ามเลือกชื่อซ้ำกันเองในคู่เดียวกัน (เช่น A กับ A)[cite: 1]
+    // 1. เช็คห้ามเลือกชื่อซ้ำกันเองในคู่เดียวกัน
     if (draftPair[0] === draftPair[1]) {
-      showToast('❌ ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้');
+      showToast('ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้', 'error');
       return;
     }
 
-    // จัดเรียง ID เพื่อเทียบความเหมือน (ป้องกันสลับคู่ เช่น A-B กับ B-A)[cite: 1]
     const sortedDraftIds = [...draftPair].sort();
 
-    // 2. เช็คว่ามีคู่นี้อยู่แล้วใน "คิวรอ" หรือไม่[cite: 1]
+    // 2. เช็คว่ามีคู่นี้อยู่แล้วในคิวรอ
     const isPairExistsInQueue = queue.some(q => {
       if (!q.pair || q.pair.length !== 2) return false;
       const qIds = q.pair.map(p => p.id).sort();
@@ -289,11 +297,11 @@ export default function BadmintonApp() {
     });
 
     if (isPairExistsInQueue) {
-      showToast('❌ คู่นี้มีอยู่ในคิวรออยู่แล้ว');
+      showToast('คู่นี้มีอยู่ในคิวรออยู่แล้ว', 'error');
       return;
     }
 
-    // 3. เช็คว่ามีคู่นี้กำลัง "แข่งขันอยู่บนสนาม" หรือไม่[cite: 1]
+    // 3. เช็คว่ามีคู่นี้กำลังแข่งขันอยู่บนสนาม
     const activePairs = [court.teamA, court.teamB];
     const isPairExistsOnCourt = activePairs.some(team => {
       if (!team || team.length !== 2) return false;
@@ -302,15 +310,15 @@ export default function BadmintonApp() {
     });
 
     if (isPairExistsOnCourt) {
-      showToast('❌ คู่นี้กำลังแข่งขันอยู่บนสนาม');
+      showToast('คู่นี้กำลังแข่งขันอยู่บนสนาม', 'error');
       return;
     }
 
-    // 4. เช็คว่าผู้เล่นคนใดคนหนึ่งติดอยู่ในคิวหรือกำลังแข่งอยู่แล้ว[cite: 1]
+    // 4. เช็คผู้เล่นซ้ำซ้อนในคิวอื่น/สนามอื่น
     const allBusyIds = new Set([...busyPlayerIds]);
     const hasBusyPlayer = draftPair.some(id => allBusyIds.has(id));
     if (hasBusyPlayer) {
-      showToast('❌ มีผู้เล่นบางคนกำลังแข่งขันหรืออยู่ในคิวรอแล้ว');
+      showToast('มีผู้เล่นบางคนกำลังแข่งขันหรืออยู่ในคิวรอแล้ว', 'error');
       return;
     }
 
@@ -326,7 +334,7 @@ export default function BadmintonApp() {
       
       await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
       setDraftPair([null, null]);
-      showToast('✅ เพิ่มคู่เข้าคิวรอสำเร็จ!');
+      showToast('เพิ่มคู่เข้าคิวรอสำเร็จ!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -362,9 +370,9 @@ export default function BadmintonApp() {
     if (!queueToDelete) return;
     setIsProcessing(true);
     try {
-        await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
-        setQueueToDelete(null);
-      showToast('ลบคิวออกแล้ว');
+      await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
+      setQueueToDelete(null);
+      showToast('ลบคิวออกแล้ว', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -377,7 +385,7 @@ export default function BadmintonApp() {
       await set(courtRef, { teamA: queue[0].pair, teamB: queue[1].pair });
       await remove(ref(db, `badbeaow/queue/${queue[0].id}`));
       await remove(ref(db, `badbeaow/queue/${queue[1].id}`));
-      showToast('เริ่มการแข่งขันแล้ว!');
+      showToast('เริ่มการแข่งขันแล้ว!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -404,12 +412,11 @@ export default function BadmintonApp() {
       }
       
       await set(ref(db, 'badbeaow/court'), { teamA: nextTeamA, teamB: nextTeamB });
-      showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`);
+      showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
 
-  // ปรับแก้ฟังก์ชันเคลียร์สนาม ให้นำผู้เล่นทั้ง 2 ทีมกลับไปต่อคิวรอ[cite: 1]
   const handleClearCourt = async () => {
     setIsProcessing(true);
     try {
@@ -417,12 +424,10 @@ export default function BadmintonApp() {
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
       
       let currentMaxOrder = maxOrder;
-      // ส่งทีม A กลับเข้าคิวรอ
       if (court.teamA) {
         currentMaxOrder += 100;
         await push(queueRef, { pair: court.teamA, sortOrder: currentMaxOrder });
       }
-      // ส่งทีม B กลับเข้าคิวรอ
       if (court.teamB) {
         currentMaxOrder += 100;
         await push(queueRef, { pair: court.teamB, sortOrder: currentMaxOrder });
@@ -432,14 +437,13 @@ export default function BadmintonApp() {
       await set(courtRef, { teamA: null, teamB: null });
       setCourt({ teamA: null, teamB: null });
       
-      showToast('เคลียร์สนาม นำผู้เล่นกลับเข้าคิวรอเรียบร้อย');
+      showToast('เคลียร์สนาม นำผู้เล่นกลับเข้าคิวรอเรียบร้อย', 'success');
     } catch (error) { 
       console.error(error); 
     }
     setIsProcessing(false);
   };
 
-  // Handlers (Payment - Protected by isAdmin)
   const handleAddFixedFee = async () => {
     if (!isAdmin) {
       setShowLoginModal(true);
@@ -453,7 +457,7 @@ export default function BadmintonApp() {
         return update(playerRef, { debt: (p.debt || 0) + 10 });
       });
       await Promise.all(promises);
-      showToast(`บวกค่าบำรุง 10 บาทให้ ${presentPlayers.length} คนเรียบร้อย!`);
+      showToast(`บวกค่าบำรุง 10 บาทให้ ${presentPlayers.length} คนเรียบร้อย!`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -473,7 +477,7 @@ export default function BadmintonApp() {
         return update(playerRef, { debt: (p.debt || 0) + perPerson });
       }));
       setTotalCourtBill('');
-      showToast(`หารค่าคอร์ตคนละ ${perPerson.toFixed(2)} บาทเรียบร้อย!`);
+      showToast(`หารค่าคอร์ตคนละ ${perPerson.toFixed(2)} บาทเรียบร้อย!`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -494,7 +498,7 @@ export default function BadmintonApp() {
       const playerRef = ref(db, `badbeaow/players/${playerId}`);
       await update(playerRef, { debt: newDebt });
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
-      showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!');
+      showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -508,11 +512,13 @@ export default function BadmintonApp() {
   return (
     <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200">
       
-      {/* Toast Notification */}
-      <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-out ${toastMessage ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
-        <div className="bg-emerald-500 text-white px-6 py-3.5 rounded-full shadow-[0_8px_30px_rgb(16,185,129,0.3)] font-semibold flex items-center gap-2.5 text-[13px] whitespace-nowrap">
-          <div className="bg-white/20 rounded-full p-0.5"><Check size={14} /></div>
-          {toastMessage}
+      {/* Toast Notification with Jelly Bounce Animation */}
+      <div className={`fixed top-6 left-1/2 z-50 transition-all duration-300 ease-out ${toast.message ? 'opacity-100 scale-100 animate-jelly' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
+        <div className={`px-6 py-3.5 rounded-full shadow-lg font-semibold flex items-center gap-2.5 text-[13px] whitespace-nowrap text-white ${toast.type === 'error' ? 'bg-red-500 shadow-[0_8px_30px_rgb(239,68,68,0.3)]' : 'bg-emerald-500 shadow-[0_8px_30px_rgb(16,185,129,0.3)]'}`}>
+          <div className="bg-white/20 rounded-full p-0.5">
+            {toast.type === 'error' ? <X size={14} /> : <Check size={14} />}
+          </div>
+          {toast.message}
         </div>
       </div>
 
@@ -942,7 +948,7 @@ export default function BadmintonApp() {
 
       {/* Delete Player Modal */}
       {playerToDelete && (
-        <div className="box-border fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบผู้เล่นนี้ออก?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อนี้จะหายไปจากระบบถาวร</p>
