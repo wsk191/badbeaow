@@ -354,13 +354,27 @@ export default function BadmintonApp() {
   };
 
   const handleClearCourt = async () => {
-    setIsProcessing(true);
-    try {
-      await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
-      showToast('เคลียร์สนามเรียบร้อย (ว่างทั้ง 2 ฝั่ง)');
-    } catch (error) { console.error(error); }
-    setIsProcessing(false);
-  };
+  setIsProcessing(true);
+  try {
+    const queueRef = ref(db, 'badbeaow/queue');
+    const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
+    
+    // ถ้ามีทีม A ให้ส่งกลับเข้าคิว
+    if (court.teamA) {
+      await push(queueRef, { pair: court.teamA, sortOrder: maxOrder + 100 });
+    }
+    // ถ้ามีทีม B ให้ส่งกลับเข้าคิว
+    if (court.teamB) {
+      const updatedMaxOrder = maxOrder + 200;
+      await push(queueRef, { pair: court.teamB, sortOrder: updatedMaxOrder });
+    }
+
+    // ล้างข้อมูลสนามให้ว่าง
+    await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
+    showToast('เคลียร์สนามและนำผู้เล่นกลับเข้าคิวเรียบร้อย');
+  } catch (error) { console.error(error); }
+  setIsProcessing(false);
+};
 
   // Handlers (Payment - Protected by isAdmin)
   const handleAddFixedFee = async () => {
