@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, AlertCircle 
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -53,7 +53,7 @@ export default function BadmintonApp() {
   const [totalCourtBill, setTotalCourtBill] = useState('');
   const [paymentInputs, setPaymentInputs] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
-  const [toast, setToast] = useState({ message: null, type: 'success' }); // type: 'success' หรือ 'error'
+  const [toast, setToast] = useState({ message: null, type: 'success' });
   const [highlightedQueueId, setHighlightedQueueId] = useState(null);
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
@@ -101,7 +101,7 @@ export default function BadmintonApp() {
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast({ message: null, type: 'success' }), 2000); // เด้งสั้นๆ 2 วินาที
+    setTimeout(() => setToast({ message: null, type: 'success' }), 2000);
   };
 
   // Auth & Realtime Sync
@@ -229,7 +229,6 @@ export default function BadmintonApp() {
     const trimmedName = newPlayerName.trim();
     if (!trimmedName) return;
 
-    // ตรวจสอบชื่อซ้ำ (ไม่สนตัวพิมพ์เล็ก-ใหญ่)
     const isDuplicate = players.some(p => p.name.toLowerCase() === trimmedName.toLowerCase());
     if (isDuplicate) {
       showToast('มีชื่อผู้เล่นนี้อยู่ในระบบแล้ว', 'error');
@@ -281,7 +280,6 @@ export default function BadmintonApp() {
   const handleCreatePair = async () => {
     if (draftPair.includes(null)) return;
 
-    // 1. เช็คห้ามเลือกชื่อซ้ำกันเองในคู่เดียวกัน
     if (draftPair[0] === draftPair[1]) {
       showToast('ไม่สามารถเลือกชื่อผู้เล่นซ้ำกันในคู่เดียวกันได้', 'error');
       return;
@@ -289,7 +287,6 @@ export default function BadmintonApp() {
 
     const sortedDraftIds = [...draftPair].sort();
 
-    // 2. เช็คว่ามีคู่นี้อยู่แล้วในคิวรอ
     const isPairExistsInQueue = queue.some(q => {
       if (!q.pair || q.pair.length !== 2) return false;
       const qIds = q.pair.map(p => p.id).sort();
@@ -301,7 +298,6 @@ export default function BadmintonApp() {
       return;
     }
 
-    // 3. เช็คว่ามีคู่นี้กำลังแข่งขันอยู่บนสนาม
     const activePairs = [court.teamA, court.teamB];
     const isPairExistsOnCourt = activePairs.some(team => {
       if (!team || team.length !== 2) return false;
@@ -314,7 +310,6 @@ export default function BadmintonApp() {
       return;
     }
 
-    // 4. เช็คผู้เล่นซ้ำซ้อนในคิวอื่น/สนามอื่น
     const allBusyIds = new Set([...busyPlayerIds]);
     const hasBusyPlayer = draftPair.some(id => allBusyIds.has(id));
     if (hasBusyPlayer) {
@@ -444,6 +439,24 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
+  // เพิ่มค่าบำรุงรายบุคคล (ป้องกันด้วยสิทธิ์ Admin)
+  const handleAddIndividualFee = async (playerId, amount = 10) => {
+    if (!isAdmin) {
+      setShowLoginModal(true);
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const player = players.find(p => p.id === playerId);
+      if (!player) return;
+      
+      const playerRef = ref(db, `badbeaow/players/${playerId}`);
+      await update(playerRef, { debt: (player.debt || 0) + amount });
+      showToast(`บวกค่าบำรุง ${amount} บาทให้ ${player.name} แล้ว`, 'success');
+    } catch (error) { console.error(error); }
+    setIsProcessing(false);
+  };
+
   const handleAddFixedFee = async () => {
     if (!isAdmin) {
       setShowLoginModal(true);
@@ -500,6 +513,34 @@ export default function BadmintonApp() {
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
       showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!', 'success');
     } catch (error) { console.error(error); }
+    setIsProcessing(false);
+  };
+
+  // ฟังก์ชันเคลียร์หนี้ทั้งหมดทีเดียวสำหรับแอดมิน
+  const handleClearAllDebt = async () => {
+    if (!isAdmin) {
+      setShowLoginModal(true);
+      return;
+    }
+    
+    const playersWithDebt = players.filter(p => (p.debt || 0) > 0);
+    if (playersWithDebt.length === 0) {
+      showToast('ไม่มีรายการค้างชำระในระบบ', 'success');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const promises = playersWithDebt.map(p => {
+        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        return update(playerRef, { debt: 0 });
+      });
+      await Promise.all(promises);
+      showToast('เคลียร์หนี้ทั้งหมดให้ทุกคนเรียบร้อยแล้ว!', 'success');
+    } catch (error) { 
+      console.error(error); 
+      showToast('เกิดข้อผิดพลาดในการเคลียร์หนี้', 'error');
+    }
     setIsProcessing(false);
   };
 
@@ -760,7 +801,16 @@ export default function BadmintonApp() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {/* ปุ่มบวกค่าบำรุง 10 บาทเฉพาะบุคคล */}
+                        <button 
+                          onClick={() => handleAddIndividualFee(player.id, 10)}
+                          disabled={isProcessing}
+                          title="บวกค่าบำรุง 10 บาท"
+                          className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                        >
+                          <Plus size={12} /> 10฿
+                        </button>
                         <button 
                           onClick={() => togglePresence(player.id, player.isPresent)}
                           disabled={isProcessing}
@@ -801,9 +851,9 @@ export default function BadmintonApp() {
               <h2 className="text-base font-bold mb-1 flex items-center justify-center gap-2">
                 <Coins size={20} /> ค่าบำรุงประจำวัน
               </h2>
-              <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้</p>
+              <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้ (หรือกดเพิ่มทีละคนได้ที่หน้าผู้เล่น)</p>
               <button onClick={handleAddFixedFee} disabled={isProcessing || presentPlayers.length === 0} className="w-full bg-white text-emerald-600 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2">
-                {!isAdmin && <Lock size={14} />} <Plus size={18} /> เก็บคนละ 10 บาท
+                {!isAdmin && <Lock size={14} />} <Plus size={18} /> เก็บทุกคนคนละ 10 บาท
               </button>
             </div>
 
@@ -824,11 +874,20 @@ export default function BadmintonApp() {
             </div>
 
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-5 border-b border-gray-50 bg-gray-50/50">
-                <h2 className="text-[15px] font-bold text-gray-800 flex items-center gap-2">
-                  <ShieldCheck size={18} className="text-purple-500"/> ยอดค้างจ่ายทั้งหมด
-                </h2>
-                <p className="text-[11px] text-gray-500 mt-0.5">ระบบหักยอดหนี้อัตโนมัติเมื่อกดจ่าย</p>
+              <div className="p-5 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                <div>
+                  <h2 className="text-[15px] font-bold text-gray-800 flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-purple-500"/> ยอดค้างจ่ายทั้งหมด
+                  </h2>
+                  <p className="text-[11px] text-gray-500 mt-0.5">ระบบหักยอดหนี้อัตโนมัติเมื่อกดจ่าย</p>
+                </div>
+                <button 
+                  onClick={handleClearAllDebt}
+                  disabled={isProcessing}
+                  className="bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-sm"
+                >
+                  {!isAdmin && <Lock size={12} />} เคลียร์หนี้ทั้งหมด
+                </button>
               </div>
               <div className="divide-y divide-gray-50">
                 {players.filter(p => p.debt > 0).length === 0 ? (
