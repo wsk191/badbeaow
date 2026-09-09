@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -63,12 +63,12 @@ export default function BadmintonApp() {
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
 
-  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ
+  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ (ปรับเกณฑ์เป็นทุกๆ 10 ครั้ง)
   const getPowerLevel = (wins = 0) => {
-    if (wins >= 20) return { label: 'ระดับเทพ 👑', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
-    if (wins >= 10) return { label: 'มือแข็ง 🔥', color: 'bg-orange-100 text-orange-700 border-orange-300' };
-    if (wins >= 5) return { label: 'มือกลาง ⚡', color: 'bg-blue-100 text-blue-700 border-blue-300' };
-    if (wins >= 2) return { label: 'พอตีได้ 🏸', color: 'bg-green-100 text-green-700 border-green-300' };
+    if (wins >= 40) return { label: 'ระดับเทพ 👑', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
+    if (wins >= 30) return { label: 'มือแข็ง 🔥', color: 'bg-orange-100 text-orange-700 border-orange-300' };
+    if (wins >= 20) return { label: 'มือกลาง ⚡', color: 'bg-blue-100 text-blue-700 border-blue-300' };
+    if (wins >= 10) return { label: 'พอตีได้ 🏸', color: 'bg-green-100 text-green-700 border-green-300' };
     return { label: 'มือใหม่ 🌱', color: 'bg-gray-100 text-gray-500 border-gray-200' };
   };
 
@@ -153,7 +153,7 @@ export default function BadmintonApp() {
       setShowLoginModal(false);
       setLoginEmail('');
       setLoginPassword('');
-      showToast('เข้าสู่ระบบแอดมินสำเร็จ (ปลดล็อกระบบเงิน)', 'success');
+      showToast('เข้าสู่ระบบแอดมินสำเร็จ (ปลดล็อกเครื่องมือจัดการ)', 'success');
     } catch (error) {
       console.error(error);
       setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
@@ -235,21 +235,18 @@ export default function BadmintonApp() {
     return presentPlayers.filter(p => !busyPlayerIds.has(p.id));
   }, [presentPlayers, busyPlayerIds]);
 
-  // กรองผู้เล่นในหน้าจัดคิวตามคำค้นหา
   const filteredAvailablePlayers = useMemo(() => {
     if (!searchDraftQuery.trim()) return availablePlayers;
     const lowerQuery = searchDraftQuery.toLowerCase();
     return availablePlayers.filter(p => p.name.toLowerCase().includes(lowerQuery));
   }, [availablePlayers, searchDraftQuery]);
 
-  // กรองผู้เล่นในหน้า Player ตามคำค้นหา
   const filteredPlayersList = useMemo(() => {
       if (!searchPlayerQuery.trim()) return players;
       const lowerQuery = searchPlayerQuery.toLowerCase();
       return players.filter(p => p.name.toLowerCase().includes(lowerQuery));
   }, [players, searchPlayerQuery]);
 
-  // ผู้เล่นที่แนะนำตอนพิมพ์เพิ่มชื่อใหม่
   const suggestedPlayers = useMemo(() => {
       if (!newPlayerName.trim()) return [];
       const lowerQuery = newPlayerName.toLowerCase();
@@ -306,11 +303,7 @@ export default function BadmintonApp() {
   };
 
   const handleDeleteAllPlayersClick = () => {
-      if (!isAdmin) {
-          setShowLoginModal(true);
-          return;
-      }
-      // ตรวจสอบว่ามีผู้เล่นมียอดค้างจ่ายหรือไม่ (เพื่อความปลอดภัย อาจจะยอมให้ลบ หรือต้องเคลียร์หนี้ก่อน)
+      if (!isAdmin) return;
       const hasDebt = players.some(p => (p.debt || 0) > 0);
       if (hasDebt) {
           showToast('ไม่สามารถลบผู้เล่นทั้งหมดได้ เนื่องจากยังมีคนมียอดค้างจ่าย', 'error');
@@ -322,13 +315,9 @@ export default function BadmintonApp() {
   const confirmDeleteAllPlayers = async () => {
       setIsProcessing(true);
       try {
-          // ลบข้อมูลผู้เล่นทั้งหมด
           await set(ref(db, 'badbeaow/players'), null);
-          // ลบคิวด้วยเพราะอิง ID ผู้เล่นที่ไม่มีแล้ว
           await set(ref(db, 'badbeaow/queue'), null);
-          // ลบสนามด้วย
           await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
-          
           setShowDeleteAllPlayersModal(false);
           showToast('ลบข้อมูลผู้เล่น คิว และสนามทั้งหมดเรียบร้อยแล้ว!', 'success');
       } catch (error) {
@@ -337,7 +326,6 @@ export default function BadmintonApp() {
       }
       setIsProcessing(false);
   };
-
 
   const togglePresence = async (id, currentStatus) => {
     try {
@@ -476,22 +464,39 @@ export default function BadmintonApp() {
       let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
       let winningTeam = winnerTeam === 'A' ? court.teamA : court.teamB;
 
-      // เพิ่มยอดชนะ (Wins) ให้กับผู้เล่นในทีมที่ชนะ
+      // เตรียมอัปเดตข้อมูลผู้เล่นชุดใหญ่ (บันทึกอันดับเก่า และ เพิ่ม/ลดคะแนน)
+      const playersUpdates = {};
+
+      // 1. บันทึกอันดับปัจจุบันให้ทุกคนก่อนเปลี่ยนคะแนน (เพื่อไว้เทียบ ขึ้น/ลง/คงที่)
+      rankedPlayers.forEach((p, index) => {
+        playersUpdates[`${p.id}/previousRank`] = index + 1;
+      });
+
+      // 2. ทีมชนะ ได้แต้ม +1
       if (winningTeam) {
-        const promises = winningTeam.map(async (player) => {
+        winningTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
-          const currentWins = dbPlayer?.wins || 0;
-          return update(ref(db, `badbeaow/players/${player.id}`), { wins: currentWins + 1 });
+          playersUpdates[`${player.id}/wins`] = (dbPlayer?.wins || 0) + 1;
         });
-        await Promise.all(promises);
       }
 
-      const queueRef = ref(db, 'badbeaow/queue');
+      // 3. ทีมแพ้ โดนหักแต้ม -1 (แต่ไม่ต่ำกว่า 0)
       if (losingTeam) {
+        losingTeam.forEach((player) => {
+          const dbPlayer = players.find(p => p.id === player.id);
+          playersUpdates[`${player.id}/wins`] = Math.max(0, (dbPlayer?.wins || 0) - 1);
+        });
+        
+        // ส่งคิวทีมแพ้ไปต่อแถวใหม่
         const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
+        const queueRef = ref(db, 'badbeaow/queue');
         await push(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
       }
 
+      // ทำการอัปเดตข้อมูลผู้เล่นทั้งหมดรวดเดียว
+      await update(ref(db, `badbeaow/players`), playersUpdates);
+
+      // ดึงคู่ถัดไปลงสนาม
       if (queue.length > 0) {
         const nextPairObj = queue[0];
         const nextPair = nextPairObj.pair;
@@ -534,10 +539,7 @@ export default function BadmintonApp() {
   };
 
   const handleAddIndividualFee = async (playerId, amount = 10) => {
-    if (!isAdmin) {
-      setShowLoginModal(true);
-      return;
-    }
+    if (!isAdmin) return;
     setIsProcessing(true);
     try {
       const player = players.find(p => p.id === playerId);
@@ -551,10 +553,7 @@ export default function BadmintonApp() {
   };
 
   const handleAddFixedFee = async () => {
-    if (!isAdmin) {
-      setShowLoginModal(true);
-      return;
-    }
+    if (!isAdmin) return;
     if (presentPlayers.length === 0) return;
     setIsProcessing(true);
     try {
@@ -569,10 +568,7 @@ export default function BadmintonApp() {
   };
 
   const handleSplitBill = async () => {
-    if (!isAdmin) {
-      setShowLoginModal(true);
-      return;
-    }
+    if (!isAdmin) return;
     const amount = parseFloat(totalCourtBill);
     if (presentPlayers.length === 0 || isNaN(amount) || amount <= 0) return;
     const perPerson = amount / presentPlayers.length;
@@ -589,10 +585,7 @@ export default function BadmintonApp() {
   };
 
   const handlePayDebt = async (playerId) => {
-    if (!isAdmin) {
-      setShowLoginModal(true);
-      return;
-    }
+    if (!isAdmin) return;
     const payAmount = parseFloat(paymentInputs[playerId]);
     if (isNaN(payAmount) || payAmount <= 0) return;
     const player = players.find(p => p.id === playerId);
@@ -610,11 +603,7 @@ export default function BadmintonApp() {
   };
 
   const handleClearAllDebt = async () => {
-    if (!isAdmin) {
-      setShowLoginModal(true);
-      return;
-    }
-    
+    if (!isAdmin) return;
     const playersWithDebt = players.filter(p => (p.debt || 0) > 0);
     if (playersWithDebt.length === 0) {
       showToast('ไม่มีรายการค้างชำระในระบบ', 'success');
@@ -666,14 +655,14 @@ export default function BadmintonApp() {
               onClick={handleLogout}
               className="bg-red-50 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm hover:bg-red-100 transition-colors"
             >
-              <LogOut size={13} /> ออกจากระบบเงิน
+              <LogOut size={13} /> ออกจากระบบแอดมิน
             </button>
           ) : (
             <button 
               onClick={() => setShowLoginModal(true)}
               className="bg-emerald-50 text-emerald-600 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm hover:bg-emerald-100 transition-colors"
             >
-              <Lock size={13} /> ปลดล็อกระบบเงิน
+              <Lock size={13} /> ล็อกอินแอดมิน
             </button>
           )}
         </div>
@@ -730,11 +719,13 @@ export default function BadmintonApp() {
                       </button>
                     </div>
                   )}
-                  <div className="text-center pt-1">
-                    <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white">
-                      เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
-                    </button>
-                  </div>
+                  {isAdmin && (
+                    <div className="text-center pt-1">
+                      <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white">
+                        เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -766,7 +757,6 @@ export default function BadmintonApp() {
                 ))}
               </div>
               
-              {/* เพิ่มช่องค้นหาผู้เล่นก่อนจับคู่ */}
               <div className="relative mb-4">
                   <Search size={16} className="absolute left-3 top-3 text-gray-400" />
                   <input 
@@ -838,19 +828,23 @@ export default function BadmintonApp() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <div className="flex flex-col gap-1 mr-2">
-                          <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                            <ArrowUp size={16} />
-                          </button>
-                          <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                            <ArrowDown size={16} />
+                      
+                      {isAdmin && (
+                        <div className="flex items-center gap-1">
+                          <div className="flex flex-col gap-1 mr-2">
+                            <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                              <ArrowUp size={16} />
+                            </button>
+                            <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                              <ArrowDown size={16} />
+                            </button>
+                          </div>
+                          <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
+                            <Trash2 size={16} />
                           </button>
                         </div>
-                        <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      )}
+
                     </div>
                   ))}
                 </div>
@@ -862,7 +856,6 @@ export default function BadmintonApp() {
 
         {activeTab === 'players' && (
           <div className="p-4 space-y-5">
-            {/* กล่องเพิ่มผู้เล่นใหม่ พร้อม Suggestion */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
               <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <UserPlus size={18} className="text-purple-500"/> เพิ่มผู้เล่นใหม่
@@ -880,7 +873,6 @@ export default function BadmintonApp() {
                   เพิ่ม
                 </button>
                 
-                {/* แถบโชว์ชื่อที่คล้ายกันตอนกำลังพิมพ์ */}
                 {newPlayerName && suggestedPlayers.length > 0 && (
                     <div className="absolute top-full left-0 right-20 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 p-2 max-h-32 overflow-y-auto">
                         <div className="text-[10px] text-gray-400 mb-1 px-2">รายชื่อที่มีอยู่แล้ว:</div>
@@ -896,7 +888,6 @@ export default function BadmintonApp() {
               </form>
             </div>
 
-            {/* ส่วนของรายชื่อทั้งหมด */}
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[60vh]">
               <div className="p-4 border-b border-gray-50 flex flex-col gap-3 bg-gray-50/50 shrink-0">
                   <div className="flex justify-between items-center">
@@ -909,7 +900,6 @@ export default function BadmintonApp() {
                     </div>
                   </div>
                   
-                  {/* ช่องค้นหาผู้เล่นในหน้ารายชื่อ */}
                   <div className="relative">
                       <Search size={16} className="absolute left-3 top-3 text-gray-400" />
                       <input 
@@ -935,26 +925,26 @@ export default function BadmintonApp() {
                           <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'} flex items-center gap-2`}>
                             {player.name}
                           </div>
-                          {/* แสดง Badge ค่าพลังและจำนวนครั้งที่ชนะ */}
                           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getPowerLevel(player.wins).color}`}>
                             {getPowerLevel(player.wins).label} (ชนะ {player.wins || 0})
                           </span>
                           
-                          {/* ซ่อน/แสดงยอดค้างจ่าย */}
                           {player.debt > 0 && (
                             <div className="text-[11px] font-bold text-red-500 mt-0.5">ค้างจ่าย: {player.debt.toFixed(2)} ฿</div>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleAddIndividualFee(player.id, 10)}
-                          disabled={isProcessing}
-                          title="บวกค่าบำรุง 10 บาท"
-                          className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-                        >
-                          <Plus size={12} /> 10฿
-                        </button>
+                        {isAdmin && (
+                          <button 
+                            onClick={() => handleAddIndividualFee(player.id, 10)}
+                            disabled={isProcessing}
+                            title="บวกค่าบำรุง 10 บาท"
+                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                          >
+                            <Plus size={12} /> 10฿
+                          </button>
+                        )}
                         <button 
                           onClick={() => togglePresence(player.id, player.isPresent)}
                           disabled={isProcessing}
@@ -962,9 +952,11 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                        <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
+                        {isAdmin && (
+                          <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1 transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -972,17 +964,17 @@ export default function BadmintonApp() {
               </div>
             </div>
 
-            {/* ปุ่มลบผู้เล่นทั้งหมด (สำหรับแอดมิน) */}
-            <div className="pt-2 pb-4">
-                <button 
-                    onClick={handleDeleteAllPlayersClick}
-                    disabled={isProcessing || players.length === 0}
-                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                    {!isAdmin && <Lock size={14} className="text-red-400"/>}
-                    <AlertTriangle size={18} /> ล้างข้อมูลผู้เล่นทั้งหมด (รีเซ็ตระบบ)
-                </button>
-            </div>
+            {isAdmin && (
+              <div className="pt-2 pb-4">
+                  <button 
+                      onClick={handleDeleteAllPlayersClick}
+                      disabled={isProcessing || players.length === 0}
+                      className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors disabled:opacity-50"
+                  >
+                      <AlertTriangle size={18} /> ล้างข้อมูลผู้เล่นทั้งหมด (รีเซ็ตระบบ)
+                  </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1004,22 +996,54 @@ export default function BadmintonApp() {
                   <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีข้อมูลผู้เล่น</div>
                 ) : (
                   rankedPlayers.map((player, index) => {
+                    const currentRank = index + 1;
+                    
+                    // คำนวณความต่างของอันดับ
+                    const prevRank = player.previousRank || currentRank;
+                    const rankDiff = prevRank - currentRank; // ค่าบวกคือขึ้น, ค่าลบคือลง
+
+                    // กำหนดสีตัวเลขลำดับ 1-3
                     let rankColor = 'text-gray-300';
                     let rankBg = 'bg-gray-50';
-                    if (index === 0) { rankColor = 'text-yellow-600'; rankBg = 'bg-yellow-100 border-yellow-200'; }
-                    else if (index === 1) { rankColor = 'text-slate-500'; rankBg = 'bg-slate-100 border-slate-200'; }
-                    else if (index === 2) { rankColor = 'text-orange-600'; rankBg = 'bg-orange-100 border-orange-200'; }
+                    if (currentRank === 1) { rankColor = 'text-yellow-600'; rankBg = 'bg-yellow-100 border-yellow-200'; }
+                    else if (currentRank === 2) { rankColor = 'text-slate-500'; rankBg = 'bg-slate-100 border-slate-200'; }
+                    else if (currentRank === 3) { rankColor = 'text-orange-600'; rankBg = 'bg-orange-100 border-orange-200'; }
+
+                    // กำหนดไอคอนและสีของการเปลี่ยนแปลงอันดับ
+                    let RankIcon = null;
+                    let rankChangeColor = '';
+                    if (rankDiff > 0) {
+                      RankIcon = ArrowUp;
+                      rankChangeColor = 'text-emerald-500 bg-emerald-50 border-emerald-100';
+                    } else if (rankDiff < 0) {
+                      RankIcon = ArrowDown;
+                      rankChangeColor = 'text-red-500 bg-red-50 border-red-100';
+                    } else {
+                      RankIcon = Minus;
+                      rankChangeColor = 'text-gray-400 bg-gray-50 border-gray-100';
+                    }
 
                     return (
                       <div key={player.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                         <div className="flex items-center gap-4">
-                          <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-sm ${rankColor} ${rankBg}`}>
-                            {index + 1}
+                          
+                          {/* กรอบบอกอันดับ และ สัญลักษณ์ขึ้นลง */}
+                          <div className="flex flex-col items-center gap-1.5 w-10">
+                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-sm ${rankColor} ${rankBg}`}>
+                              {currentRank}
+                            </div>
+                            {player.previousRank && (
+                                <div className={`flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${rankChangeColor}`}>
+                                  <RankIcon size={10} />
+                                  {rankDiff !== 0 && Math.abs(rankDiff)}
+                                </div>
+                            )}
                           </div>
+                          
                           <div>
                             <div className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
                               {player.name}
-                              {index === 0 && <span className="text-[10px]">👑</span>}
+                              {currentRank === 1 && <span className="text-[10px]">👑</span>}
                             </div>
                             <div className="text-[11px] text-gray-500 mt-0.5">ชนะทั้งหมด {player.wins || 0} แมตช์</div>
                           </div>
@@ -1045,42 +1069,46 @@ export default function BadmintonApp() {
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-amber-800">โหมดดูข้อมูล (ระบบเงินล็อกอยู่)</div>
-                  <div className="text-[11px] text-amber-600">เฉพาะแอดมินเท่านั้นที่กดคิดเงิน/เคลียร์หนี้ได้</div>
+                  <div className="text-[11px] text-amber-600">เฉพาะแอดมินเท่านั้นที่ใช้เครื่องมือคิดเงินได้</div>
                 </div>
                 <button 
                   onClick={() => setShowLoginModal(true)}
                   className="bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm hover:bg-amber-700 transition-colors"
                 >
-                  ปลดล็อก
+                  ล็อกอินแอดมิน
                 </button>
               </div>
             )}
 
-            <div className={`bg-gradient-to-r from-emerald-500 to-teal-500 p-6 rounded-3xl shadow-lg text-white text-center ${!isAdmin ? 'opacity-90 grayscale-[20%]' : ''} transition-all`}>
-              <h2 className="text-base font-bold mb-1 flex items-center justify-center gap-2">
-                <Coins size={20} /> ค่าบำรุงประจำวัน
-              </h2>
-              <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้</p>
-              <button onClick={handleAddFixedFee} disabled={isProcessing || presentPlayers.length === 0} className="w-full bg-white text-emerald-600 hover:bg-emerald-50 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
-                {!isAdmin && <Lock size={14} />} <Plus size={18} /> เก็บทุกคนคนละ 10 บาท
-              </button>
-            </div>
+            {isAdmin && (
+              <>
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-6 rounded-3xl shadow-lg text-white text-center transition-all">
+                  <h2 className="text-base font-bold mb-1 flex items-center justify-center gap-2">
+                    <Coins size={20} /> ค่าบำรุงประจำวัน
+                  </h2>
+                  <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้</p>
+                  <button onClick={handleAddFixedFee} disabled={isProcessing || presentPlayers.length === 0} className="w-full bg-white text-emerald-600 hover:bg-emerald-50 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
+                    <Plus size={18} /> เก็บทุกคนคนละ 10 บาท
+                  </button>
+                </div>
 
-            <div className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 ${!isAdmin ? 'opacity-90' : ''} transition-all`}>
-              <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Receipt size={18} className="text-purple-500"/> หารค่าคอร์ต
-              </h2>
-              <input 
-                type="number" 
-                value={totalCourtBill} 
-                onChange={(e) => setTotalCourtBill(e.target.value)} 
-                placeholder="ยอดบิลรวมทั้งหมด (บาท)" 
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-sm mb-3 focus:outline-none focus:border-purple-500 transition-colors"
-              />
-              <button onClick={handleSplitBill} disabled={isProcessing || !totalCourtBill} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
-                {!isAdmin && <Lock size={14} />} หาร {presentPlayers.length} คน (ตกคนละ {((parseFloat(totalCourtBill) || 0) / (presentPlayers.length || 1)).toFixed(2)} ฿)
-              </button>
-            </div>
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 transition-all">
+                  <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Receipt size={18} className="text-purple-500"/> หารค่าคอร์ต
+                  </h2>
+                  <input 
+                    type="number" 
+                    value={totalCourtBill} 
+                    onChange={(e) => setTotalCourtBill(e.target.value)} 
+                    placeholder="ยอดบิลรวมทั้งหมด (บาท)" 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-sm mb-3 focus:outline-none focus:border-purple-500 transition-colors"
+                  />
+                  <button onClick={handleSplitBill} disabled={isProcessing || !totalCourtBill} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
+                    หาร {presentPlayers.length} คน (ตกคนละ {((parseFloat(totalCourtBill) || 0) / (presentPlayers.length || 1)).toFixed(2)} ฿)
+                  </button>
+                </div>
+              </>
+            )}
 
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-5 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
@@ -1088,15 +1116,17 @@ export default function BadmintonApp() {
                   <h2 className="text-[15px] font-bold text-gray-800 flex items-center gap-2">
                     <ShieldCheck size={18} className="text-purple-500"/> ยอดค้างจ่ายทั้งหมด
                   </h2>
-                  <p className="text-[11px] text-gray-500 mt-0.5">ระบบหักยอดหนี้อัตโนมัติเมื่อกดจ่าย</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">สรุปยอดเงินผู้เล่นปัจจุบัน</p>
                 </div>
-                <button 
-                  onClick={handleClearAllDebt}
-                  disabled={isProcessing}
-                  className="bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
-                >
-                  {!isAdmin && <Lock size={12} />} เคลียร์หนี้ทั้งหมด
-                </button>
+                {isAdmin && (
+                  <button 
+                    onClick={handleClearAllDebt}
+                    disabled={isProcessing}
+                    className="bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                  >
+                    เคลียร์หนี้ทั้งหมด
+                  </button>
+                )}
               </div>
               <div className="divide-y divide-gray-50">
                 {players.filter(p => p.debt > 0).length === 0 ? (
@@ -1108,18 +1138,22 @@ export default function BadmintonApp() {
                         <div className="font-semibold text-sm text-gray-800">{player.name}</div>
                         <div className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <input 
-                          type="number" 
-                          value={paymentInputs[player.id] || ''} 
-                          onChange={(e) => setPaymentInputs({ ...paymentInputs, [player.id]: e.target.value })} 
-                          placeholder="ยอดที่จ่าย..." 
-                          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-colors"
-                        />
-                        <button onClick={() => handlePayDebt(player.id)} disabled={isProcessing} className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-1 transition-colors disabled:opacity-50">
-                          {!isAdmin && <Lock size={12} />} จ่าย
-                        </button>
-                      </div>
+                      
+                      {isAdmin && (
+                        <div className="flex gap-2 items-center">
+                          <input 
+                            type="number" 
+                            value={paymentInputs[player.id] || ''} 
+                            onChange={(e) => setPaymentInputs({ ...paymentInputs, [player.id]: e.target.value })} 
+                            placeholder="ยอดที่จ่าย..." 
+                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                          />
+                          <button onClick={() => handlePayDebt(player.id)} disabled={isProcessing} className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-1 transition-colors disabled:opacity-50">
+                            จ่าย
+                          </button>
+                        </div>
+                      )}
+                      
                     </div>
                   ))
                 )}
