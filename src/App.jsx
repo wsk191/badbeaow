@@ -35,6 +35,7 @@ export default function BadmintonApp() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [splashComplete, setSplashComplete] = useState(false);
 
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -161,6 +162,12 @@ export default function BadmintonApp() {
   };
 
   // Auth & Realtime Sync
+  useEffect(() => {
+    const splashTimer = setTimeout(() => setSplashComplete(true), 3000);
+
+    return () => clearTimeout(splashTimer);
+  }, []);
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -784,9 +791,24 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50" style={{ fontFamily: "'Prompt', sans-serif" }}>
-      <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-purple-200 border-t-purple-600"></div>
+  if (loading || !splashComplete) return (
+    <div
+      className="min-h-screen bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden relative"
+      style={{ fontFamily: "'Prompt', sans-serif" }}
+    >
+      <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
+      <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+      <div className="relative text-center animate-in fade-in zoom-in-95 duration-500">
+        <div className="mx-auto mb-5 w-20 h-20 rounded-3xl bg-white/15 border border-white/20 shadow-2xl flex items-center justify-center backdrop-blur-sm">
+          <Swords size={38} className="text-purple-100" />
+        </div>
+        <h1 className="text-3xl font-black tracking-[0.18em]">BADBEAOW</h1>
+        <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+        <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+          กำลังเตรียมระบบ...
+        </div>
+      </div>
     </div>
   );
 
