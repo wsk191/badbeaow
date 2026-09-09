@@ -109,12 +109,14 @@ export default function BadmintonApp() {
         70% { transform: translate(-50%, -3px) scale(0.97); }
         100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
       }
-      @keyframes splash-logo {
-        0%, 100% { opacity: 0.78; transform: translateY(0); letter-spacing: 0.18em; }
-        50% { opacity: 1; transform: translateY(-3px); letter-spacing: 0.23em; }
+      @keyframes splash-a {
+        0% { opacity: 0; transform: translateY(-18px); }
+        65% { opacity: 1; transform: translateY(3px); }
+        100% { opacity: 1; transform: translateY(0); }
       }
-      .splash-logo {
-        animation: splash-logo 1.8s ease-in-out infinite;
+      .splash-a {
+        display: inline-block;
+        animation: splash-a 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -806,10 +808,7 @@ export default function BadmintonApp() {
       <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
       <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
       <div className="relative text-center animate-in fade-in zoom-in-95 duration-500">
-        <div className="mx-auto mb-5 w-20 h-20 rounded-3xl bg-white/15 border border-white/20 shadow-2xl flex items-center justify-center backdrop-blur-sm">
-          <Swords size={38} className="text-purple-100" />
-        </div>
-        <h1 className="splash-logo text-3xl font-black">BADBEAOW</h1>
+        <h1 className="text-3xl font-black tracking-[0.18em]">BADBE<span className="splash-a">A</span>OW</h1>
         <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
         <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
