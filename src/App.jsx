@@ -12,7 +12,7 @@ import {
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
-import { getDatabase, ref, onValue, push, update, remove, set, get } from 'firebase/database';
+import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction } from 'firebase/database';
 
 const COURTS = [
   { id: 'court-1', name: 'คอร์ด 1', accent: 'from-violet-700 to-indigo-900', solid: 'bg-violet-600', text: 'text-violet-600' },
@@ -68,6 +68,7 @@ export default function BadmintonApp() {
   const [dashboardData, setDashboardData] = useState({});
   const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
+  const [resultLockNow, setResultLockNow] = useState(Date.now());
 
   // Local UI State
   const [newPlayerName, setNewPlayerName] = useState('');
@@ -80,6 +81,7 @@ export default function BadmintonApp() {
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
+  const [showDeleteAllQueueModal, setShowDeleteAllQueueModal] = useState(false);
   const [adminUidInput, setAdminUidInput] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
@@ -99,6 +101,10 @@ export default function BadmintonApp() {
   const [todayKey, setTodayKey] = useState(getTodayKey);
 
   const selectedCourt = COURTS.find(courtItem => courtItem.id === selectedCourtId);
+  const resultLockStartedAt = Number(court.resultLockStartedAt || 0);
+  const resultLockRemaining = Math.max(0, resultLockStartedAt + 300000 - resultLockNow);
+  const isResultLocked = userRole !== 'superAdmin' && resultLockRemaining > 0;
+  const resultLockTotalSeconds = Math.ceil(resultLockRemaining / 1000);
   const getCourtRoot = (courtId = selectedCourtId) => courtId === 'court-1'
     ? 'badbeaow'
     : `badbeaow/courts/${courtId}`;
@@ -310,6 +316,12 @@ export default function BadmintonApp() {
       document.head.removeChild(polyfillStyle);
     };
   }, []);
+
+  useEffect(() => {
+    if (!court.resultLockStartedAt) return undefined;
+    const timer = setInterval(() => setResultLockNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [court.resultLockStartedAt]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -728,10 +740,6 @@ export default function BadmintonApp() {
 
   // --- Drag & Drop Handlers สำหรับจัดคิว ---
   const handleDragStart = (e, index) => {
-    if (!isAdmin) {
-      e.preventDefault();
-      return;
-    }
     setDraggedQueueIdx(index);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
@@ -741,7 +749,6 @@ export default function BadmintonApp() {
   };
 
   const handleDragEnter = (e, index) => {
-    if (!isAdmin) return;
     e.preventDefault();
     if (dragOverQueueIdx !== index) {
       setDragOverQueueIdx(index);
@@ -749,7 +756,6 @@ export default function BadmintonApp() {
   };
 
   const handleDragOver = (e, index) => {
-    if (!isAdmin) return;
     e.preventDefault(); 
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'move';
@@ -765,7 +771,6 @@ export default function BadmintonApp() {
   };
 
   const handleDrop = async (e, dropIndex) => {
-    if (!isAdmin) return;
     e.preventDefault();
     
     const dragIdx = draggedQueueIdx;
@@ -886,7 +891,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeletePlayer = async () => {
-    if (!playerToDelete || !isAdmin) return;
+    if (!playerToDelete) return;
     setIsProcessing(true);
     try {
       await remove(ref(db, `${courtRoot}/players/${playerToDelete}`));
@@ -904,6 +909,27 @@ export default function BadmintonApp() {
           return;
       }
       setShowDeleteAllPlayersModal(true);
+  };
+
+  const handleDeleteAllQueueClick = () => {
+    if (queue.length === 0) {
+      showToast('ยังไม่มีคู่ในคิวให้ลบ', 'error');
+      return;
+    }
+    setShowDeleteAllQueueModal(true);
+  };
+
+  const confirmDeleteAllQueue = async () => {
+    setIsProcessing(true);
+    try {
+      await set(ref(db, `${courtRoot}/queue`), null);
+      setShowDeleteAllQueueModal(false);
+      showToast('ลบคู่ในคิวทั้งหมดแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('ลบคู่ทั้งหมดไม่สำเร็จ กรุณาตรวจสอบ Firebase Rules', 'error');
+    }
+    setIsProcessing(false);
   };
 
   const confirmDeleteAllPlayers = async () => {
@@ -1001,7 +1027,6 @@ export default function BadmintonApp() {
   };
 
   const handleMoveQueue = async (index, direction) => {
-    if (!isAdmin) return;
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === queue.length - 1) return;
 
@@ -1029,7 +1054,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete || !isAdmin) return; 
+    if (!queueToDelete) return; 
     setIsProcessing(true);
     try {
       await remove(ref(db, `${courtRoot}/queue/${queueToDelete}`));
@@ -1040,22 +1065,43 @@ export default function BadmintonApp() {
   };
 
   const handleStartGame = async () => {
-    if (!isAdmin || queue.length < 2) return;
+    if (queue.length < 2) {
+      showToast('ต้องมีคิวอย่างน้อย 2 คู่ก่อนเริ่มการแข่งขัน', 'error');
+      return;
+    }
     setIsProcessing(true);
     try {
-      const courtRef = ref(db, `${courtRoot}/court`);
-      await set(courtRef, { teamA: queue[0].pair, teamB: queue[1].pair });
-      await remove(ref(db, `${courtRoot}/queue/${queue[0].id}`));
-      await remove(ref(db, `${courtRoot}/queue/${queue[1].id}`));
+      await update(ref(db), {
+        [`${courtRoot}/court`]: { teamA: queue[0].pair, teamB: queue[1].pair },
+        [`${courtRoot}/queue/${queue[0].id}`]: null,
+        [`${courtRoot}/queue/${queue[1].id}`]: null,
+      });
       showToast('เริ่มการแข่งขันแล้ว!', 'success');
-    } catch (error) { console.error(error); }
-    setIsProcessing(false);
+    } catch (error) {
+      console.error(error);
+      showToast('ดึงคู่ลงสนามไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleWin = async (winnerTeam) => {
-    if (!isAdmin) return;
+    if (isResultLocked) return;
     setIsProcessing(true);
     try {
+      const resultTimestamp = Date.now();
+      const isRapidResult = resultTimestamp - Number(court.lastResultAt || 0) < 10000;
+      let resultLockStartedAt = 0;
+
+      if (isRapidResult && userRole !== 'superAdmin') {
+        const lockTransaction = await runTransaction(ref(db, `${courtRoot}/court/resultLockStartedAt`), currentLockStart => {
+          const lockStart = Number(currentLockStart || 0);
+          return lockStart + 300000 > resultTimestamp ? lockStart : resultTimestamp;
+        });
+        resultLockStartedAt = Number(lockTransaction.snapshot.val() || 0);
+        showToast('กดผลการแข่งขันเร็วเกินไป ระบบล็อกปุ่มไว้ 5 นาที', 'error');
+      }
+
       let nextTeamA = winnerTeam === 'A' ? court.teamA : null;
       let nextTeamB = winnerTeam === 'B' ? court.teamB : null;
       let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
@@ -1074,57 +1120,77 @@ export default function BadmintonApp() {
         });
       }
 
+      let losingQueueKey = null;
       if (losingTeam) {
         losingTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
           playersUpdates[`${player.id}/wins`] = Math.max(0, (dbPlayer?.wins || 0) - 1);
         });
-        
-        const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-        const queueRef = ref(db, `${courtRoot}/queue`);
-        await push(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
+        losingQueueKey = push(ref(db, `${courtRoot}/queue`)).key;
       }
 
-      await update(ref(db, `${courtRoot}/players`), playersUpdates);
-
+      const resultUpdates = {};
+      Object.entries(playersUpdates).forEach(([path, value]) => {
+        resultUpdates[`${courtRoot}/players/${path}`] = value;
+      });
+      const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
+      if (losingQueueKey) {
+        resultUpdates[`${courtRoot}/queue/${losingQueueKey}`] = { pair: losingTeam, sortOrder: maxOrder + 100 };
+      }
       if (queue.length > 0) {
         const nextPairObj = queue[0];
         const nextPair = nextPairObj.pair;
         if (winnerTeam === 'A') nextTeamB = nextPair;
         if (winnerTeam === 'B') nextTeamA = nextPair;
-        await remove(ref(db, `${courtRoot}/queue/${nextPairObj.id}`));
+        resultUpdates[`${courtRoot}/queue/${nextPairObj.id}`] = null;
       }
-      
-      await set(ref(db, `${courtRoot}/court`), { teamA: nextTeamA, teamB: nextTeamB });
-      showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`, 'success');
-    } catch (error) { console.error(error); }
+
+      resultUpdates[`${courtRoot}/court`] = {
+        teamA: nextTeamA,
+        teamB: nextTeamB,
+        lastResultAt: resultTimestamp,
+        ...(resultLockStartedAt && userRole !== 'superAdmin' ? { resultLockStartedAt } : {}),
+      };
+      await update(ref(db), resultUpdates);
+      if (!isRapidResult || userRole === 'superAdmin') showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`, 'success');
+    } catch (error) {
+      console.error(error);
+      const errorMessage = error?.code === 'PERMISSION_DENIED'
+        ? 'ไม่มีสิทธิ์เขียนข้อมูล กรุณา Publish Firebase Rules ล่าสุด'
+        : 'บันทึกผลการแข่งขันไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+      showToast(errorMessage, 'error');
+    }
     setIsProcessing(false);
   };
 
   const handleClearCourt = async () => {
-    if (!isAdmin) return;
     setIsProcessing(true);
     try {
       const queueRef = ref(db, `${courtRoot}/queue`);
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-      
+      const queuedPairKeys = new Set(queue.map(q => (q.pair || []).map(player => player.id).sort().join(':')));
+      const updates = {};
       let currentMaxOrder = maxOrder;
-      if (court.teamA) {
-        currentMaxOrder += 100;
-        await push(queueRef, { pair: court.teamA, sortOrder: currentMaxOrder });
-      }
-      if (court.teamB) {
-        currentMaxOrder += 100;
-        await push(queueRef, { pair: court.teamB, sortOrder: currentMaxOrder });
-      }
 
-      const courtRef = ref(db, `${courtRoot}/court`);
-      await set(courtRef, { teamA: null, teamB: null });
+      [court.teamA, court.teamB].forEach(team => {
+        if (!team) return;
+        const pairKey = team.map(player => player.id).sort().join(':');
+        if (queuedPairKeys.has(pairKey)) return;
+
+        const queueId = push(queueRef).key;
+        currentMaxOrder += 100;
+        updates[`${courtRoot}/queue/${queueId}`] = { pair: team, sortOrder: currentMaxOrder };
+        queuedPairKeys.add(pairKey);
+      });
+
+      updates[`${courtRoot}/court`] = { teamA: null, teamB: null };
+      await update(ref(db), updates);
       setCourt({ teamA: null, teamB: null });
       
-      showToast('เคลียร์สนาม นำผู้เล่นกลับเข้าคิวรอเรียบร้อย', 'success');
+      showToast('เคลียร์สนามและนำคู่กลับเข้าคิวเรียบร้อย (ข้ามคู่ที่มีอยู่แล้ว)', 'success');
     } catch (error) { 
-      console.error(error); 
+      console.error(error);
+      showToast('เคลียร์สนามไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
     }
     setIsProcessing(false);
   };
@@ -1660,7 +1726,7 @@ export default function BadmintonApp() {
                 <div className="text-center py-8 bg-black/20 rounded-2xl border border-white/10">
                   <div className="text-purple-300 mb-3 text-sm">สนามว่าง รอผู้เล่น</div>
                   {queue.length >= 2 ? (
-                    <button onClick={handleStartGame} disabled={isProcessing} className="bg-white text-purple-800 px-6 py-2.5 rounded-full font-bold shadow-lg text-sm">
+                    <button onClick={handleStartGame} disabled={isProcessing} className="bg-white text-purple-800 px-6 py-2.5 rounded-full font-bold shadow-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                       ดึงคิวที่ 1 & 2 ลงสนาม
                     </button>
                   ) : (
@@ -1682,13 +1748,20 @@ export default function BadmintonApp() {
                   </div>
 
                   {court.teamA && court.teamB && (
-                    <div className="flex gap-3">
-                      <button onClick={() => handleWin('A')} disabled={isProcessing} className="flex-1 bg-purple-500 hover:bg-purple-400 py-3 rounded-xl text-sm font-bold shadow-lg">
+                    <div className="space-y-2">
+                      {isResultLocked && (
+                        <div className="rounded-xl bg-red-500/20 border border-red-300/30 px-3 py-2 text-center text-xs font-semibold text-red-100">
+                          ปุ่มบันทึกผลถูกล็อกอีก {Math.ceil(resultLockTotalSeconds / 60)} นาที เนื่องจากกดซ้ำเร็วเกินไป
+                        </div>
+                      )}
+                      <div className="flex gap-3">
+                      <button onClick={() => handleWin('A')} disabled={isProcessing || isResultLocked} className="flex-1 bg-purple-500 hover:bg-purple-400 py-3 rounded-xl text-sm font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                         <Trophy size={16} className="inline mr-1"/> ทีม A ชนะ
                       </button>
-                      <button onClick={() => handleWin('B')} disabled={isProcessing} className="flex-1 bg-indigo-500 hover:bg-indigo-400 py-3 rounded-xl text-sm font-bold shadow-lg">
+                      <button onClick={() => handleWin('B')} disabled={isProcessing || isResultLocked} className="flex-1 bg-indigo-500 hover:bg-indigo-400 py-3 rounded-xl text-sm font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                         <Trophy size={16} className="inline mr-1"/> ทีม B ชนะ
                       </button>
+                      </div>
                     </div>
                   )}
                   <div className="text-center pt-1">
@@ -1793,7 +1866,7 @@ export default function BadmintonApp() {
                     return (
                       <div 
                         key={q.id} 
-                        draggable={isAdmin}
+                        draggable
                         onDragStart={(e) => handleDragStart(e, idx)}
                         onDragEnter={(e) => handleDragEnter(e, idx)}
                         onDragOver={(e) => handleDragOver(e, idx)}
@@ -1802,16 +1875,14 @@ export default function BadmintonApp() {
                         className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all duration-200 queue-item
                           ${q.id === highlightedQueueId ? 'queue-highlight ' : ''} 
                           ${q.isMoved ? 'bg-fuchsia-50 border-fuchsia-400' : 'bg-white border-gray-100 shadow-sm'}
-                          ${isAdmin ? 'cursor-grab active:cursor-grabbing active:bg-gray-50' : ''}
+                          cursor-grab active:cursor-grabbing active:bg-gray-50
                           ${dragClass}
                         `}
                       >
                         <div className="flex items-center gap-3">
-                          {isAdmin && (
-                            <div className="text-gray-300 hover:text-gray-500 drag-handle" title="แตะค้างไว้เพื่อลากสลับคิว">
-                                <GripVertical size={18} />
-                            </div>
-                          )}
+                          <div className="text-gray-300 hover:text-gray-500 drag-handle" title="แตะค้างไว้เพื่อลากสลับคิว">
+                              <GripVertical size={18} />
+                          </div>
                           <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[13px] font-bold ${q.isMoved ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-purple-50 text-purple-700'}`}>
                             {idx + 1}
                           </div>
@@ -1828,16 +1899,14 @@ export default function BadmintonApp() {
                         </div>
                         
                         <div className="flex items-center gap-1">
-                          {isAdmin && (
-                            <div className="flex flex-col gap-1 mr-2">
-                              <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                                <ArrowUp size={16} />
-                              </button>
-                              <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                                <ArrowDown size={16} />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex flex-col gap-1 mr-2">
+                            <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                              <ArrowUp size={16} />
+                            </button>
+                            <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                              <ArrowDown size={16} />
+                            </button>
+                          </div>
                           <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
                             <Trash2 size={16} />
                           </button>
@@ -1847,6 +1916,13 @@ export default function BadmintonApp() {
                   })}
                 </div>
               )}
+              <button
+                onClick={handleDeleteAllQueueClick}
+                disabled={isProcessing || queue.length === 0}
+                className="w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={16} /> ลบคู่ในคิวทั้งหมด
+              </button>
             </div>
 
           </div>
@@ -2418,6 +2494,23 @@ export default function BadmintonApp() {
             <div className="flex gap-3">
               <button onClick={() => setQueueToDelete(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">ยกเลิก</button>
               <button onClick={confirmDeleteQueue} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white shadow-md transition-colors disabled:opacity-50">ลบคิว</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Queue Modal */}
+      {showDeleteAllQueueModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-2 border-red-500 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-3 text-red-600">
+              <AlertTriangle size={24} />
+              <h3 className="text-lg font-black">ลบคู่ในคิวทั้งหมด?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">จะลบคู่ที่รออยู่ทั้งหมด แต่ไม่ลบรายชื่อผู้เล่นหรือคู่ที่กำลังแข่ง</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteAllQueueModal(false)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">ยกเลิก</button>
+              <button onClick={confirmDeleteAllQueue} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-black bg-red-600 hover:bg-red-700 text-white shadow-lg disabled:opacity-50">ลบทั้งหมด</button>
             </div>
           </div>
         </div>

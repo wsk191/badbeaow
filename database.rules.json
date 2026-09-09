@@ -17,7 +17,9 @@
     "badbeaow": {
       "players": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        "$playerId": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists() || (newData.exists() && newData.child('debt').val() === data.child('debt').val()) || (!newData.exists() && data.child('debt').val() === 0))"
+        }
       },
       "queue": {
         ".read": "auth != null",
@@ -25,13 +27,15 @@
       },
       "court": {
         ".read": "auth != null",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists())"
+        ".write": "auth != null"
       },
       "courts": {
         "$courtId": {
           "players": {
             ".read": "auth != null",
-            ".write": "auth != null"
+            "$playerId": {
+              ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists() || (newData.exists() && newData.child('debt').val() === data.child('debt').val()) || (!newData.exists() && data.child('debt').val() === 0))"
+            }
           },
           "queue": {
             ".read": "auth != null",
@@ -39,7 +43,7 @@
           },
           "court": {
             ".read": "auth != null",
-            ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists())"
+            ".write": "auth != null"
           }
         }
       }
