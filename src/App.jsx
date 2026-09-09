@@ -111,11 +111,17 @@ export default function BadmintonApp() {
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
-      /* ป้องกันการคลุมดำข้อความและเมนูเด้งตอนลากในมือถือ */
+      /* ป้องกันการคลุมดำข้อความและหน้าจอเลื่อนตอนลากในมือถือ */
       .queue-item {
-        -webkit-touch-callout: none; /* iOS Safari */
-        -webkit-user-select: none; /* Safari */
-        user-select: none; /* Standard */
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      .drag-handle {
+          touch-action: none; /* ห้ามหน้าจอขยับเวลาแตะลากตรงไอคอนนี้ */
       }
     `;
     document.head.appendChild(style);
@@ -134,7 +140,7 @@ export default function BadmintonApp() {
         if (window.MobileDragDrop) {
             window.MobileDragDrop.polyfill({
                 dragImageTranslateOverride: window.MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
-                holdToDrag: 150 // ลดเวลาลงให้กดค้างปุ๊บลากได้เลย (0.15 วินาที)
+                holdToDrag: 100 // ลดเวลาลงอีก เพื่อให้ตอบสนองไวขึ้นบนมือถือ
             });
             window.addEventListener('touchmove', function() {}, {passive: false});
         }
@@ -300,7 +306,7 @@ export default function BadmintonApp() {
     setDraggedQueueIdx(index);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      // สำคัญ: ต้องใส่ setData เพื่อให้ Polyfill และบางเบราว์เซอร์ทำงานได้สมบูรณ์
+      // สำคัญมากสำหรับมือถือ: setData เพื่อให้ Drag API ทำงานได้
       e.dataTransfer.setData('text/plain', index.toString()); 
     }
   };
@@ -315,7 +321,7 @@ export default function BadmintonApp() {
 
   const handleDragOver = (e, index) => {
     if (!isAdmin) return;
-    e.preventDefault(); // สำคัญ: ต้องใส่เพื่อให้ลากไปวางได้
+    e.preventDefault(); 
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'move';
     }
@@ -966,7 +972,7 @@ export default function BadmintonApp() {
                     const isDragging = draggedQueueIdx === idx;
                     const isDragOver = dragOverQueueIdx === idx;
                     let dragClass = '';
-                    if (isDragging) dragClass = 'opacity-40 scale-95 shadow-inner bg-gray-50 border-purple-400';
+                    if (isDragging) dragClass = 'dragging scale-95 shadow-inner bg-gray-50 border-purple-400';
                     else if (isDragOver && draggedQueueIdx !== null && draggedQueueIdx !== idx) {
                         dragClass = draggedQueueIdx < idx ? 'border-b-4 border-b-purple-500 transform -translate-y-1' : 'border-t-4 border-t-purple-500 transform translate-y-1';
                     }
@@ -989,7 +995,7 @@ export default function BadmintonApp() {
                       >
                         <div className="flex items-center gap-3">
                           {isAdmin && (
-                            <div className="text-gray-300 hover:text-gray-500" title="กดค้าง 0.1 วินาทีเพื่อลากสลับคิว">
+                            <div className="text-gray-300 hover:text-gray-500 drag-handle" title="แตะค้างไว้เพื่อลากสลับคิว">
                                 <GripVertical size={18} />
                             </div>
                           )}
@@ -1163,6 +1169,7 @@ export default function BadmintonApp() {
           </div>
         )}
 
+        {/* แท็บจัดอันดับ Leaderboard */}
         {activeTab === 'leaderboard' && (
           <div className="p-4 space-y-5">
             <div className="bg-gradient-to-br from-purple-700 to-indigo-900 p-6 rounded-3xl shadow-lg text-white text-center relative overflow-hidden">
