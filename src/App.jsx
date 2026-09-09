@@ -44,6 +44,7 @@ export default function BadmintonApp() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userRole, setUserRole] = useState('user');
   const [managedAdminIds, setManagedAdminIds] = useState({});
+  const [assignedCourtIds, setAssignedCourtIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
@@ -331,21 +332,39 @@ export default function BadmintonApp() {
     };
     initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser?.email) {
-        get(ref(db, `users/${currentUser.uid}/role`)).then((snapshot) => {
-          const role = snapshot.val() || 'user';
+        try {
+          const roleSnapshot = await get(ref(db, `users/${currentUser.uid}/role`));
+          const role = roleSnapshot.val() || 'user';
+          const adminChecks = await Promise.all(COURTS.map(async (courtItem) => {
+            try {
+              const snapshot = await get(ref(db, `boardAdmins/${courtItem.id}/${currentUser.uid}`));
+              return snapshot.val() === true ? courtItem.id : null;
+            } catch (error) {
+              console.error(`Court access lookup error (${courtItem.id}):`, error);
+              return null;
+            }
+          }));
+          const courtIds = adminChecks.filter(Boolean);
           setUserRole(role);
-        }).catch((error) => {
+          setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
+          if (role !== 'superAdmin' && courtIds.length === 1) {
+            setSelectedCourtId(courtIds[0]);
+          }
+        } catch (error) {
           console.error('Role lookup error:', error);
           setUserRole('user');
-        });
+          setAssignedCourtIds([]);
+        }
       } else if (currentUser) {
         setUserRole('user');
+        setAssignedCourtIds([]);
         setIsAdmin(false);
       } else {
         setUserRole('user');
+        setAssignedCourtIds([]);
         setIsAdmin(false);
       }
       setLoading(false);
@@ -362,10 +381,15 @@ export default function BadmintonApp() {
     }
 
     const adminsRef = ref(db, `boardAdmins/${selectedCourtId}`);
+    setIsAdmin(userRole === 'superAdmin' || managedAdminIds[user.uid] === true);
     const unsubscribe = onValue(adminsRef, (snapshot) => {
       const admins = snapshot.val() || {};
       setManagedAdminIds(admins);
       setIsAdmin(userRole === 'superAdmin' || admins[user.uid] === true);
+    }, (error) => {
+      console.error('Board admin lookup error:', error);
+      setManagedAdminIds({});
+      setIsAdmin(userRole === 'superAdmin');
     });
 
     return () => unsubscribe();
@@ -377,14 +401,50 @@ export default function BadmintonApp() {
     setLoginError('');
     setIsProcessing(true);
     try {
-      await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      const roleSnapshot = await get(ref(db, `users/${credential.user.uid}/role`));
+      const role = roleSnapshot.val() || 'user';
+      const adminChecks = await Promise.all(COURTS.map(async (courtItem) => {
+        try {
+          const snapshot = await get(ref(db, `boardAdmins/${courtItem.id}/${credential.user.uid}`));
+          return snapshot.val() === true ? courtItem.id : null;
+        } catch (error) {
+          return null;
+        }
+      }));
+      const courtIds = adminChecks.filter(Boolean);
+      const isCourtAdmin = selectedCourtId ? courtIds.includes(selectedCourtId) : courtIds.length > 0;
+      const hasAdminAccess = role === 'superAdmin' || isCourtAdmin;
+
+      setUser(credential.user);
+      setUserRole(role);
+      setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
+      setIsAdmin(hasAdminAccess);
+      if (role !== 'superAdmin' && courtIds.length === 1) {
+        setSelectedCourtId(courtIds[0]);
+      }
+
       setShowLoginModal(false);
       setLoginEmail('');
       setLoginPassword('');
-      showToast('เข้าสู่ระบบแอดมินสำเร็จ (เปิดโหมดผู้ดูแล)', 'success');
+      if (role === 'superAdmin') {
+        showToast('เข้าสู่ระบบ SuperAdmin สำเร็จ', 'success');
+      } else if (isCourtAdmin) {
+        showToast(`เข้าสู่ระบบ Admin ${selectedCourt?.name || 'ประจำคอร์ด'} สำเร็จ`, 'success');
+      } else {
+        showToast(selectedCourt
+          ? `เข้าสู่ระบบสำเร็จ แต่บัญชีนี้ยังไม่มีสิทธิ์ ${selectedCourt.name}`
+          : 'เข้าสู่ระบบสำเร็จ แต่บัญชีนี้ไม่มีสิทธิ์ SuperAdmin', 'error');
+      }
     } catch (error) {
       console.error(error);
-      setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      if (error.code === 'PERMISSION_DENIED') {
+        setLoginError('ล็อกอินสำเร็จ แต่ระบบอ่านสิทธิ์ไม่ได้ กรุณา Publish Rules และตรวจ UID');
+      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/invalid-email') {
+        setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      } else {
+        setLoginError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      }
     }
     setIsProcessing(false);
   };
@@ -394,6 +454,7 @@ export default function BadmintonApp() {
       await signOut(auth);
       await signInAnonymously(auth);
       setUserRole('user');
+      setAssignedCourtIds([]);
       setIsAdmin(false);
       showToast('ออกจากระบบแอดมินแล้ว', 'success');
     } catch (error) {
@@ -1059,6 +1120,10 @@ export default function BadmintonApp() {
   };
 
   const showSplash = loading || !splashComplete;
+  const visibleCourts = user?.email && userRole !== 'superAdmin'
+    ? COURTS.filter(courtItem => assignedCourtIds.includes(courtItem.id))
+    : COURTS;
+  const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
 
   if (!selectedCourtId) {
     return (
@@ -1093,7 +1158,7 @@ export default function BadmintonApp() {
         </div>
 
         <div className="space-y-3">
-          {COURTS.map(courtItem => (
+          {visibleCourts.map(courtItem => (
             <button
               key={courtItem.id}
               onClick={() => selectCourt(courtItem.id)}
@@ -1108,9 +1173,47 @@ export default function BadmintonApp() {
           ))}
         </div>
 
+        {isLoggedInAdmin ? (
+          <button
+            onClick={handleLogout}
+            className="w-full mt-6 bg-red-600 hover:bg-red-700 text-white rounded-2xl py-3.5 font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut size={18} /> ออกจากระบบ
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowLoginModal(true)}
+            className="w-full mt-6 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl py-3.5 font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2"
+          >
+            <ShieldCheck size={18} /> เข้าสู่ระบบ
+          </button>
+        )}
+
+        {user?.email && !isLoggedInAdmin && (
+          <p className="mt-6 text-center text-xs text-red-500">บัญชีนี้ยังไม่ได้รับสิทธิ์ดูแลคอร์ด</p>
+        )}
+
         <div className="mt-8 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm text-center text-xs text-gray-500">
           ข้อมูลคิว ผู้เล่น และการเงินจะแยกตามคอร์ดที่เลือก
         </div>
+
+        {showLoginModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+              <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
+              <p className="text-xs text-gray-500 mb-4">ระบบจะพาไปยังคอร์ดตามสิทธิ์ของบัญชี</p>
+              {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
+              <form onSubmit={handleAdminLogin} className="space-y-3">
+                <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 text-sm">ยกเลิก</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">เข้าสู่ระบบ</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
