@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key 
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -57,6 +57,11 @@ export default function BadmintonApp() {
   const [highlightedQueueId, setHighlightedQueueId] = useState(null);
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
+  const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
+
+  // Search State
+  const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
+  const [searchDraftQuery, setSearchDraftQuery] = useState('');
 
   // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ
   const getPowerLevel = (wins = 0) => {
@@ -230,6 +235,27 @@ export default function BadmintonApp() {
     return presentPlayers.filter(p => !busyPlayerIds.has(p.id));
   }, [presentPlayers, busyPlayerIds]);
 
+  // กรองผู้เล่นในหน้าจัดคิวตามคำค้นหา
+  const filteredAvailablePlayers = useMemo(() => {
+    if (!searchDraftQuery.trim()) return availablePlayers;
+    const lowerQuery = searchDraftQuery.toLowerCase();
+    return availablePlayers.filter(p => p.name.toLowerCase().includes(lowerQuery));
+  }, [availablePlayers, searchDraftQuery]);
+
+  // กรองผู้เล่นในหน้า Player ตามคำค้นหา
+  const filteredPlayersList = useMemo(() => {
+      if (!searchPlayerQuery.trim()) return players;
+      const lowerQuery = searchPlayerQuery.toLowerCase();
+      return players.filter(p => p.name.toLowerCase().includes(lowerQuery));
+  }, [players, searchPlayerQuery]);
+
+  // ผู้เล่นที่แนะนำตอนพิมพ์เพิ่มชื่อใหม่
+  const suggestedPlayers = useMemo(() => {
+      if (!newPlayerName.trim()) return [];
+      const lowerQuery = newPlayerName.toLowerCase();
+      return players.filter(p => p.name.toLowerCase().includes(lowerQuery));
+  }, [players, newPlayerName]);
+
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
   // จัดเรียงผู้เล่นตามจำนวนรอบที่ชนะ (จากมากไปน้อย) สำหรับ Leaderboard
@@ -278,6 +304,40 @@ export default function BadmintonApp() {
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
+
+  const handleDeleteAllPlayersClick = () => {
+      if (!isAdmin) {
+          setShowLoginModal(true);
+          return;
+      }
+      // ตรวจสอบว่ามีผู้เล่นมียอดค้างจ่ายหรือไม่ (เพื่อความปลอดภัย อาจจะยอมให้ลบ หรือต้องเคลียร์หนี้ก่อน)
+      const hasDebt = players.some(p => (p.debt || 0) > 0);
+      if (hasDebt) {
+          showToast('ไม่สามารถลบผู้เล่นทั้งหมดได้ เนื่องจากยังมีคนมียอดค้างจ่าย', 'error');
+          return;
+      }
+      setShowDeleteAllPlayersModal(true);
+  };
+
+  const confirmDeleteAllPlayers = async () => {
+      setIsProcessing(true);
+      try {
+          // ลบข้อมูลผู้เล่นทั้งหมด
+          await set(ref(db, 'badbeaow/players'), null);
+          // ลบคิวด้วยเพราะอิง ID ผู้เล่นที่ไม่มีแล้ว
+          await set(ref(db, 'badbeaow/queue'), null);
+          // ลบสนามด้วย
+          await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
+          
+          setShowDeleteAllPlayersModal(false);
+          showToast('ลบข้อมูลผู้เล่น คิว และสนามทั้งหมดเรียบร้อยแล้ว!', 'success');
+      } catch (error) {
+          console.error(error);
+          showToast('เกิดข้อผิดพลาดในการลบข้อมูลทั้งหมด', 'error');
+      }
+      setIsProcessing(false);
+  };
+
 
   const togglePresence = async (id, currentStatus) => {
     try {
@@ -688,7 +748,7 @@ export default function BadmintonApp() {
                 </span>
               </h2>
 
-              <div className="flex gap-3 mb-5">
+              <div className="flex gap-3 mb-4">
                 {[0, 1].map(idx => (
                   <div 
                     key={idx}
@@ -705,19 +765,33 @@ export default function BadmintonApp() {
                   </div>
                 ))}
               </div>
+              
+              {/* เพิ่มช่องค้นหาผู้เล่นก่อนจับคู่ */}
+              <div className="relative mb-4">
+                  <Search size={16} className="absolute left-3 top-3 text-gray-400" />
+                  <input 
+                    type="text" 
+                    value={searchDraftQuery} 
+                    onChange={(e) => setSearchDraftQuery(e.target.value)} 
+                    placeholder="ค้นหาชื่อผู้เล่น..." 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                  />
+              </div>
 
-              <div className="flex flex-wrap gap-2 mb-5 max-h-40 overflow-y-auto">
-                {availablePlayers.length === 0 ? (
-                  <div className="text-xs text-gray-400 py-3 w-full text-center bg-gray-50 rounded-xl">ไม่มีผู้เล่นว่าง (กรุณาเช็คชื่อในแถบผู้เล่นก่อน)</div>
+              <div className="flex flex-wrap gap-2 mb-5 max-h-40 overflow-y-auto custom-scrollbar p-1">
+                {filteredAvailablePlayers.length === 0 ? (
+                  <div className="text-xs text-gray-400 py-3 w-full text-center bg-gray-50 rounded-xl">
+                      {searchDraftQuery ? 'ไม่พบชื่อที่ค้นหา' : 'ไม่มีผู้เล่นว่าง (กรุณาเช็คชื่อในแถบผู้เล่นก่อน)'}
+                  </div>
                 ) : (
-                  availablePlayers.map(player => {
+                  filteredAvailablePlayers.map(player => {
                     const isSelected = draftPair.includes(player.id);
                     return (
                       <button 
                         key={player.id}
                         onClick={() => handleDraftSelect(player.id)}
                         className={`px-4 py-2 rounded-xl text-[13px] font-medium transition-all ${
-                          isSelected ? 'bg-purple-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-700 hover:bg-purple-50'
+                          isSelected ? 'bg-purple-600 text-white shadow-md scale-105' : 'bg-white border border-gray-200 text-gray-700 hover:bg-purple-50 hover:border-purple-200'
                         }`}
                       >
                         {player.name}
@@ -730,8 +804,8 @@ export default function BadmintonApp() {
               <button 
                 onClick={handleCreatePair}
                 disabled={draftPair.includes(null) || isProcessing}
-                className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${
-                  !draftPair.includes(null) ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  !draftPair.includes(null) ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-md transform hover:-translate-y-0.5' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
               >
                 <Plus size={18} /> เพิ่มเข้าคิวรอ
@@ -744,7 +818,7 @@ export default function BadmintonApp() {
                 คิวรอสนาม <span className="text-[11px] font-medium text-gray-500">{queue.length} คู่</span>
               </h3>
               {queue.length === 0 ? (
-                <div className="text-center py-8 bg-white border border-gray-100 rounded-3xl text-gray-400 text-[13px]">ยังไม่มีคิวรอ</div>
+                <div className="text-center py-8 bg-white border border-gray-100 rounded-3xl text-gray-400 text-[13px] shadow-sm">ยังไม่มีคิวรอ</div>
               ) : (
                 <div className="space-y-3">
                   {queue.map((q, idx) => (
@@ -766,14 +840,14 @@ export default function BadmintonApp() {
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="flex flex-col gap-1 mr-2">
-                          <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30">
+                          <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
                             <ArrowUp size={16} />
                           </button>
-                          <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30">
+                          <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
                             <ArrowDown size={16} />
                           </button>
                         </div>
-                        <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600">
+                        <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -788,41 +862,74 @@ export default function BadmintonApp() {
 
         {activeTab === 'players' && (
           <div className="p-4 space-y-5">
+            {/* กล่องเพิ่มผู้เล่นใหม่ พร้อม Suggestion */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
               <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <UserPlus size={18} className="text-purple-500"/> เพิ่มผู้เล่นใหม่
               </h2>
-              <form onSubmit={handleAddPlayer} className="flex gap-2">
+              <form onSubmit={handleAddPlayer} className="flex gap-2 relative">
                 <input 
                   type="text" 
                   value={newPlayerName} 
                   onChange={(e) => setNewPlayerName(e.target.value)} 
-                  placeholder="ชื่อผู้เล่น..." 
+                  placeholder="พิมพ์ชื่อเพื่อเพิ่ม..." 
                   disabled={isProcessing}
-                  className="flex-1 px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-purple-500"
+                  className="flex-1 px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-purple-500 transition-colors"
                 />
-                <button type="submit" disabled={isProcessing || !newPlayerName} className="bg-purple-600 text-white px-5 py-3.5 rounded-xl font-bold hover:bg-purple-700 shadow-md">
+                <button type="submit" disabled={isProcessing || !newPlayerName} className="bg-purple-600 text-white px-5 py-3.5 rounded-xl font-bold hover:bg-purple-700 shadow-md transition-colors disabled:opacity-50">
                   เพิ่ม
                 </button>
+                
+                {/* แถบโชว์ชื่อที่คล้ายกันตอนกำลังพิมพ์ */}
+                {newPlayerName && suggestedPlayers.length > 0 && (
+                    <div className="absolute top-full left-0 right-20 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 p-2 max-h-32 overflow-y-auto">
+                        <div className="text-[10px] text-gray-400 mb-1 px-2">รายชื่อที่มีอยู่แล้ว:</div>
+                        <div className="flex flex-wrap gap-1">
+                            {suggestedPlayers.map(p => (
+                                <span key={p.id} className="bg-gray-100 text-gray-600 text-[11px] px-2 py-1 rounded-md">
+                                    {p.name}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
               </form>
             </div>
 
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                <div>
-                  <h2 className="text-[15px] font-bold text-gray-800">รายชื่อทั้งหมด</h2>
-                  <p className="text-[11px] text-gray-500 mt-1">เช็คชื่อคนที่ <span className="font-semibold text-purple-600">มาตีวันนี้</span></p>
-                </div>
-                <div className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full">
-                  มา {presentPlayers.length} คน
-                </div>
+            {/* ส่วนของรายชื่อทั้งหมด */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[60vh]">
+              <div className="p-4 border-b border-gray-50 flex flex-col gap-3 bg-gray-50/50 shrink-0">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h2 className="text-[15px] font-bold text-gray-800">รายชื่อทั้งหมด</h2>
+                      <p className="text-[11px] text-gray-500 mt-1">เช็คชื่อคนที่ <span className="font-semibold text-purple-600">มาตีวันนี้</span></p>
+                    </div>
+                    <div className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
+                      มา {presentPlayers.length} คน
+                    </div>
+                  </div>
+                  
+                  {/* ช่องค้นหาผู้เล่นในหน้ารายชื่อ */}
+                  <div className="relative">
+                      <Search size={16} className="absolute left-3 top-3 text-gray-400" />
+                      <input 
+                        type="text" 
+                        value={searchPlayerQuery} 
+                        onChange={(e) => setSearchPlayerQuery(e.target.value)} 
+                        placeholder="ค้นหาชื่อเพื่อเช็คชื่อ/ลบ..." 
+                        className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                      />
+                  </div>
               </div>
-              <div className="divide-y divide-gray-50">
-                {players.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีรายชื่อผู้เล่น</div>
+              
+              <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
+                {filteredPlayersList.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-sm">
+                      {searchPlayerQuery ? 'ไม่พบชื่อที่ค้นหา' : 'ยังไม่มีรายชื่อผู้เล่น'}
+                  </div>
                 ) : (
-                  players.map((player) => (
-                    <div key={player.id} className="p-4 flex justify-between items-center">
+                  filteredPlayersList.map((player) => (
+                    <div key={player.id} className="p-4 flex justify-between items-center hover:bg-gray-50/50 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="flex flex-col items-start gap-1">
                           <div className={`font-semibold text-sm ${player.isPresent ? 'text-gray-800' : 'text-gray-400'} flex items-center gap-2`}>
@@ -855,7 +962,7 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                        <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1">
+                        <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1 transition-colors">
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -863,6 +970,18 @@ export default function BadmintonApp() {
                   ))
                 )}
               </div>
+            </div>
+
+            {/* ปุ่มลบผู้เล่นทั้งหมด (สำหรับแอดมิน) */}
+            <div className="pt-2 pb-4">
+                <button 
+                    onClick={handleDeleteAllPlayersClick}
+                    disabled={isProcessing || players.length === 0}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                    {!isAdmin && <Lock size={14} className="text-red-400"/>}
+                    <AlertTriangle size={18} /> ล้างข้อมูลผู้เล่นทั้งหมด (รีเซ็ตระบบ)
+                </button>
             </div>
           </div>
         )}
@@ -930,24 +1049,24 @@ export default function BadmintonApp() {
                 </div>
                 <button 
                   onClick={() => setShowLoginModal(true)}
-                  className="bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm"
+                  className="bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm hover:bg-amber-700 transition-colors"
                 >
                   ปลดล็อก
                 </button>
               </div>
             )}
 
-            <div className={`bg-gradient-to-r from-emerald-500 to-teal-500 p-6 rounded-3xl shadow-lg text-white text-center ${!isAdmin ? 'opacity-90' : ''}`}>
+            <div className={`bg-gradient-to-r from-emerald-500 to-teal-500 p-6 rounded-3xl shadow-lg text-white text-center ${!isAdmin ? 'opacity-90 grayscale-[20%]' : ''} transition-all`}>
               <h2 className="text-base font-bold mb-1 flex items-center justify-center gap-2">
                 <Coins size={20} /> ค่าบำรุงประจำวัน
               </h2>
-              <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้ (หรือกดเพิ่มทีละคนได้ที่หน้าผู้เล่น)</p>
-              <button onClick={handleAddFixedFee} disabled={isProcessing || presentPlayers.length === 0} className="w-full bg-white text-emerald-600 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2">
+              <p className="text-emerald-50 text-[12px] mb-5">บวกหนี้ <span className="font-bold text-white">10 บาท</span> ให้กับทุกคนที่เช็คชื่อมาตีวันนี้</p>
+              <button onClick={handleAddFixedFee} disabled={isProcessing || presentPlayers.length === 0} className="w-full bg-white text-emerald-600 hover:bg-emerald-50 py-3.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
                 {!isAdmin && <Lock size={14} />} <Plus size={18} /> เก็บทุกคนคนละ 10 บาท
               </button>
             </div>
 
-            <div className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 ${!isAdmin ? 'opacity-90' : ''}`}>
+            <div className={`bg-white p-5 rounded-3xl shadow-sm border border-gray-100 ${!isAdmin ? 'opacity-90' : ''} transition-all`}>
               <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Receipt size={18} className="text-purple-500"/> หารค่าคอร์ต
               </h2>
@@ -956,9 +1075,9 @@ export default function BadmintonApp() {
                 value={totalCourtBill} 
                 onChange={(e) => setTotalCourtBill(e.target.value)} 
                 placeholder="ยอดบิลรวมทั้งหมด (บาท)" 
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-sm mb-3 focus:outline-none focus:border-purple-500"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-sm mb-3 focus:outline-none focus:border-purple-500 transition-colors"
               />
-              <button onClick={handleSplitBill} disabled={isProcessing || !totalCourtBill} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-2">
+              <button onClick={handleSplitBill} disabled={isProcessing || !totalCourtBill} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-2 transition-colors disabled:opacity-70">
                 {!isAdmin && <Lock size={14} />} หาร {presentPlayers.length} คน (ตกคนละ {((parseFloat(totalCourtBill) || 0) / (presentPlayers.length || 1)).toFixed(2)} ฿)
               </button>
             </div>
@@ -974,7 +1093,7 @@ export default function BadmintonApp() {
                 <button 
                   onClick={handleClearAllDebt}
                   disabled={isProcessing}
-                  className="bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-sm"
+                  className="bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
                 >
                   {!isAdmin && <Lock size={12} />} เคลียร์หนี้ทั้งหมด
                 </button>
@@ -987,7 +1106,7 @@ export default function BadmintonApp() {
                     <div key={player.id} className="p-4 flex flex-col gap-3">
                       <div className="flex justify-between items-center">
                         <div className="font-semibold text-sm text-gray-800">{player.name}</div>
-                        <div className="text-sm font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
+                        <div className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
                       </div>
                       <div className="flex gap-2 items-center">
                         <input 
@@ -995,9 +1114,9 @@ export default function BadmintonApp() {
                           value={paymentInputs[player.id] || ''} 
                           onChange={(e) => setPaymentInputs({ ...paymentInputs, [player.id]: e.target.value })} 
                           placeholder="ยอดที่จ่าย..." 
-                          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
+                          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-colors"
                         />
-                        <button onClick={() => handlePayDebt(player.id)} disabled={isProcessing} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm flex items-center gap-1">
+                        <button onClick={() => handlePayDebt(player.id)} disabled={isProcessing} className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-1 transition-colors disabled:opacity-50">
                           {!isAdmin && <Lock size={12} />} จ่าย
                         </button>
                       </div>
@@ -1011,7 +1130,7 @@ export default function BadmintonApp() {
       </main>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 shadow-lg z-30 pb-safe">
+      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-30 pb-safe">
         <div className="flex justify-between px-2 py-3">
           <button onClick={() => setActiveTab('queue')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'queue' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
             <Swords size={22} className={activeTab === 'queue' ? 'drop-shadow-sm' : ''} />
@@ -1037,10 +1156,10 @@ export default function BadmintonApp() {
 
       {/* Admin Login Modal */}
       {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-1">ปลดล็อกระบบคิดเงิน</h3>
-            <p className="text-xs text-gray-500 mb-4">กรอกอีเมลและรหัสผ่านแอดมินเพื่อจัดการการเงิน</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-1">ปลดล็อกสิทธิ์แอดมิน</h3>
+            <p className="text-xs text-gray-500 mb-4">สำหรับจัดการการเงินและลบข้อมูลระบบ</p>
             
             {loginError && (
               <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">
@@ -1080,8 +1199,8 @@ export default function BadmintonApp() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 text-sm">ยกเลิก</button>
-                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 text-white shadow-md text-sm">ปลดล็อก</button>
+                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
+                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">ปลดล็อก</button>
               </div>
             </form>
           </div>
@@ -1090,13 +1209,13 @@ export default function BadmintonApp() {
 
       {/* Delete Queue Modal */}
       {queueToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบคิวนี้ใช่หรือไม่?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อคู่นี้จะถูกนำออกจากคิวรอ</p>
             <div className="flex gap-3">
-              <button onClick={() => setQueueToDelete(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600">ยกเลิก</button>
-              <button onClick={confirmDeleteQueue} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-red-500 text-white shadow-md">ลบคิว</button>
+              <button onClick={() => setQueueToDelete(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">ยกเลิก</button>
+              <button onClick={confirmDeleteQueue} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white shadow-md transition-colors disabled:opacity-50">ลบคิว</button>
             </div>
           </div>
         </div>
@@ -1104,13 +1223,37 @@ export default function BadmintonApp() {
 
       {/* Delete Player Modal */}
       {playerToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบผู้เล่นนี้ออก?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อนี้จะหายไปจากระบบถาวร</p>
             <div className="flex gap-3">
-              <button onClick={() => setPlayerToDelete(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600">ยกเลิก</button>
-              <button onClick={confirmDeletePlayer} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-red-500 text-white shadow-md">ลบผู้เล่น</button>
+              <button onClick={() => setPlayerToDelete(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">ยกเลิก</button>
+              <button onClick={confirmDeletePlayer} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white shadow-md transition-colors disabled:opacity-50">ลบผู้เล่น</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete ALL Players Modal (อันตรายสุดๆ) */}
+      {showDeleteAllPlayersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-2 border-red-500 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-3 text-red-600">
+                <AlertTriangle size={24} />
+                <h3 className="text-lg font-black">อันตราย! ยืนยันการล้างระบบ?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-2 font-medium">การกระทำนี้จะลบ:</p>
+            <ul className="text-xs text-gray-500 list-disc list-inside mb-6 space-y-1 ml-2">
+                <li>รายชื่อผู้เล่น<span className="font-bold text-red-500">ทุกคน</span></li>
+                <li>สถิติการชนะและค่าพลังทั้งหมด</li>
+                <li>คิวรอและสถานะสนามปัจจุบัน</li>
+            </ul>
+            <p className="text-[11px] text-red-500 mb-6 font-bold">*ไม่สามารถกู้คืนข้อมูลได้</p>
+            
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteAllPlayersModal(false)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">ยกเลิก</button>
+              <button onClick={confirmDeleteAllPlayers} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-black bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-200 transition-all active:scale-95 disabled:opacity-50">ล้างระบบถาวร</button>
             </div>
           </div>
         </div>
