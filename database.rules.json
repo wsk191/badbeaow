@@ -14,6 +14,14 @@
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'"
       }
     },
+    "systemStatus": {
+      ".read": "auth != null",
+      "maintenanceMode": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
+        ".validate": "newData.isBoolean()"
+      }
+    },
     "badbeaow": {
       "players": {
         ".read": "auth != null",

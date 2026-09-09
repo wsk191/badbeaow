@@ -2,13 +2,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
     signInAnonymously, 
-    signInWithEmailAndPassword, 
+    sendSignInLinkToEmail,
+    isSignInWithEmailLink,
+    signInWithEmailLink,
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
@@ -59,13 +61,15 @@ export default function BadmintonApp() {
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [loginLinkSent, setLoginLinkSent] = useState(false);
 
   // Database State
   const [players, setPlayers] = useState([]);
   const [allCourtPlayers, setAllCourtPlayers] = useState({});
   const [dashboardData, setDashboardData] = useState({});
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceUpdating, setMaintenanceUpdating] = useState(false);
   const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
   const [resultLockNow, setResultLockNow] = useState(Date.now());
@@ -354,7 +358,15 @@ export default function BadmintonApp() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (!auth.currentUser) {
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+          let email = window.localStorage.getItem('badbeaowSignInEmail');
+          if (!email) email = window.prompt('กรุณากรอกอีเมลที่ขอลิงก์เข้าสู่ระบบ');
+          if (email) {
+            await signInWithEmailLink(auth, email.trim(), window.location.href);
+            window.localStorage.removeItem('badbeaowSignInEmail');
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } else if (!auth.currentUser) {
           await signInAnonymously(auth);
         }
       } catch (error) {
@@ -406,6 +418,15 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
+    const maintenanceRef = ref(db, 'systemStatus/maintenanceMode');
+    return onValue(maintenanceRef, snapshot => {
+      setMaintenanceMode(snapshot.val() === true);
+    }, error => {
+      console.error('Maintenance mode lookup error:', error);
+    });
+  }, []);
+
+  useEffect(() => {
     const adminCourtId = selectedCourtId || (userRole === 'superAdmin' ? superAdminCourtId : null);
     if (!user || !adminCourtId) {
       setManagedAdminIds({});
@@ -432,56 +453,26 @@ export default function BadmintonApp() {
   const handleAdminLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
+    setLoginLinkSent(false);
     setIsProcessing(true);
     try {
-      const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
-      const roleSnapshot = await get(ref(db, `users/${credential.user.uid}/role`));
-      const role = roleSnapshot.val() || 'user';
-      const adminChecks = await Promise.all(COURTS.map(async (courtItem) => {
-        try {
-          const snapshot = await get(ref(db, `boardAdmins/${courtItem.id}/${credential.user.uid}`));
-          return snapshot.val() === true ? courtItem.id : null;
-        } catch (error) {
-          return null;
-        }
-      }));
-      const courtIds = adminChecks.filter(Boolean);
-      const isCourtAdmin = selectedCourtId ? courtIds.includes(selectedCourtId) : courtIds.length > 0;
-      const hasAdminAccess = role === 'superAdmin' || isCourtAdmin;
-
-      setUser(credential.user);
-      setUserRole(role);
-      setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
-      setIsAdmin(hasAdminAccess);
-      if (role === 'superAdmin') {
-        setSelectedCourtId(null);
-        setSuperAdminSection('dashboard');
-        setActiveTab('dashboard');
-      }
-      if (role !== 'superAdmin' && courtIds.length === 1) {
-        setSelectedCourtId(courtIds[0]);
-      }
-
-      setShowLoginModal(false);
-      setLoginEmail('');
-      setLoginPassword('');
-      if (role === 'superAdmin') {
-        showToast('เข้าสู่ระบบ SuperAdmin สำเร็จ', 'success');
-      } else if (isCourtAdmin) {
-        showToast(`เข้าสู่ระบบ Admin ${selectedCourt?.name || 'ประจำคอร์ด'} สำเร็จ`, 'success');
-      } else {
-        showToast(selectedCourt
-          ? `เข้าสู่ระบบสำเร็จ แต่บัญชีนี้ยังไม่มีสิทธิ์ ${selectedCourt.name}`
-          : 'เข้าสู่ระบบสำเร็จ แต่บัญชีนี้ไม่มีสิทธิ์ SuperAdmin', 'error');
-      }
+      const email = loginEmail.trim();
+      if (!email) throw new Error('auth/invalid-email');
+      await sendSignInLinkToEmail(auth, email, {
+        url: window.location.origin,
+        handleCodeInApp: true,
+      });
+      window.localStorage.setItem('badbeaowSignInEmail', email);
+      setLoginLinkSent(true);
+      showToast('ส่งลิงก์เข้าสู่ระบบไปที่อีเมลแล้ว', 'success');
     } catch (error) {
       console.error(error);
-      if (error.code === 'PERMISSION_DENIED') {
-        setLoginError('ล็อกอินสำเร็จ แต่ระบบอ่านสิทธิ์ไม่ได้ กรุณา Publish Rules และตรวจ UID');
-      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/invalid-email') {
-        setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      if (error.code === 'auth/invalid-email') {
+        setLoginError('รูปแบบอีเมลไม่ถูกต้อง');
+      } else if (error.code === 'auth/operation-not-allowed') {
+        setLoginError('ยังไม่ได้เปิด Email Link ใน Firebase Authentication');
       } else {
-        setLoginError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        setLoginError('ส่งลิงก์ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่า Firebase Authentication');
       }
     }
     setIsProcessing(false);
@@ -497,6 +488,23 @@ export default function BadmintonApp() {
       showToast('ออกจากระบบแอดมินแล้ว', 'success');
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const toggleMaintenanceMode = async () => {
+    if (userRole !== 'superAdmin') return;
+    setMaintenanceUpdating(true);
+    try {
+      await set(ref(db, 'systemStatus/maintenanceMode'), !maintenanceMode);
+      showToast(!maintenanceMode ? 'เปิดโหมดปรับปรุงระบบแล้ว' : 'เปิดระบบให้ผู้ใช้ใช้งานแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      const errorMessage = error?.code === 'PERMISSION_DENIED'
+        ? 'ไม่มีสิทธิ์เปลี่ยนสถานะระบบ ต้อง Publish Firebase Rules ล่าสุด'
+        : `เปลี่ยนสถานะระบบไม่สำเร็จ (${error?.code || 'ไม่ทราบสาเหตุ'})`;
+      showToast(errorMessage, 'error');
+    } finally {
+      setMaintenanceUpdating(false);
     }
   };
 
@@ -1289,6 +1297,48 @@ export default function BadmintonApp() {
   const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
   const superAdminCourt = COURTS.find(courtItem => courtItem.id === superAdminCourtId) || COURTS[0];
 
+  if (!loading && maintenanceMode && userRole !== 'superAdmin') {
+    return (
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen max-w-md mx-auto relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-center px-6">
+        <div className="absolute inset-0 opacity-20 bg-[linear-gradient(135deg,transparent_25%,rgba(255,255,255,0.08)_25%,rgba(255,255,255,0.08)_50%,transparent_50%,transparent_75%,rgba(255,255,255,0.08)_75%)] bg-[length:44px_44px]" />
+        <div className="relative w-full text-center">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-amber-300/30 bg-amber-300/10 text-amber-300 shadow-[0_0_45px_rgba(251,191,36,0.18)]">
+            <Wrench size={38} className="animate-pulse" />
+          </div>
+          <div className="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" /> ระบบอยู่ระหว่างปรับปรุง
+          </div>
+          <h1 className="text-2xl font-black tracking-tight">กำลังปรับปรุงระบบ</h1>
+          <p className="mt-3 text-sm leading-6 text-white/65">ขณะนี้ระบบยังไม่เปิดให้ใช้งานชั่วคราว กรุณากลับมาใหม่ภายหลัง</p>
+          <div className="mx-auto mt-8 flex items-center justify-center gap-2 text-xs text-white/45">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-amber-300" /> กำลังดำเนินการ...
+          </div>
+          <button onClick={() => setShowLoginModal(true)} className="mt-8 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-bold text-white/80 hover:bg-white/15">
+            เข้าสู่ระบบผู้ดูแล
+          </button>
+        </div>
+
+        {showLoginModal && (
+          <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl">
+              <h3 className="mb-1 text-lg font-bold">เข้าสู่ระบบผู้ดูแล</h3>
+              <p className="mb-4 text-xs text-gray-500">สำหรับ SuperAdmin เพื่อเปิดระบบกลับมาใช้งาน</p>
+              {loginError && <div className="mb-3 rounded-xl bg-red-50 p-3 text-center text-xs font-medium text-red-600">{loginError}</div>}
+              {loginLinkSent && <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-center text-xs font-medium text-emerald-700">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>}
+              <form onSubmit={handleAdminLogin} className="space-y-3">
+                <input type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="อีเมล" required className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-purple-500 focus:outline-none" />
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-600">ยกเลิก</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!selectedCourtId && user?.email && userRole === 'superAdmin') {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-slate-50 text-gray-800 max-w-md mx-auto relative shadow-2xl overflow-x-hidden pb-6">
@@ -1344,6 +1394,19 @@ export default function BadmintonApp() {
                   <div className={`text-2xl font-black mt-1 ${metric.color}`}>{metric.value}</div>
                 </div>
               ))}
+            </div>
+            <div className={`rounded-3xl border p-5 shadow-sm ${maintenanceMode ? 'border-amber-200 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 font-bold text-gray-800"><Wrench size={18} /> สถานะการเปิดระบบ</div>
+                  <p className={`mt-1 text-xs ${maintenanceMode ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {maintenanceMode ? 'ผู้ใช้ทั่วไปจะเห็นหน้าระบบกำลังปรับปรุง' : 'ผู้ใช้ทั่วไปสามารถเข้าใช้งานระบบได้ตามปกติ'}
+                  </p>
+                </div>
+                <button onClick={toggleMaintenanceMode} disabled={maintenanceUpdating} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 ${maintenanceMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                  {maintenanceUpdating ? 'กำลังบันทึก...' : maintenanceMode ? 'เปิดระบบ' : 'ปิดระบบ'}
+                </button>
+              </div>
             </div>
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -1566,12 +1629,12 @@ export default function BadmintonApp() {
               <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="text-xs text-gray-500 mb-4">ระบบจะพาไปยังคอร์ดตามสิทธิ์ของบัญชี</p>
               {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
+              {loginLinkSent && <div className="mb-3 p-3 bg-emerald-50 text-emerald-700 text-xs rounded-xl font-medium text-center">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>}
               <form onSubmit={handleAdminLogin} className="space-y-3">
                 <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
-                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 text-sm">ยกเลิก</button>
-                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">เข้าสู่ระบบ</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
                 </div>
               </form>
             </div>
@@ -2422,6 +2485,9 @@ export default function BadmintonApp() {
                 {loginError}
               </div>
             )}
+            {loginLinkSent && (
+              <div className="mb-3 p-3 bg-emerald-50 text-emerald-700 text-xs rounded-xl font-medium text-center">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>
+            )}
 
             <form onSubmit={handleAdminLogin} className="space-y-3">
               <div>
@@ -2439,24 +2505,9 @@ export default function BadmintonApp() {
                 </div>
               </div>
               
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-600 mb-1">รหัสผ่าน</label>
-                <div className="relative">
-                  <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-                  <input 
-                    type="password" 
-                    value={loginPassword} 
-                    onChange={(e) => setLoginPassword(e.target.value)} 
-                    placeholder="••••••••" 
-                    required 
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
-                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">ปลดล็อก</button>
+                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
               </div>
             </form>
           </div>
