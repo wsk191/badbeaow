@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -49,6 +49,9 @@ export default function BadmintonApp() {
   const [userRole, setUserRole] = useState('user');
   const [managedAdminIds, setManagedAdminIds] = useState({});
   const [assignedCourtIds, setAssignedCourtIds] = useState([]);
+  const [superAdminSection, setSuperAdminSection] = useState('dashboard');
+  const [superAdminCourtId, setSuperAdminCourtId] = useState('court-1');
+  const [expandedCourtIds, setExpandedCourtIds] = useState({});
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
@@ -366,6 +369,7 @@ export default function BadmintonApp() {
           const courtIds = adminChecks.filter(Boolean);
           setUserRole(role);
           setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
+          if (role === 'superAdmin') setActiveTab('dashboard');
           if (role !== 'superAdmin' && courtIds.length === 1) {
             setSelectedCourtId(courtIds[0]);
           }
@@ -390,13 +394,14 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
-    if (!user || !selectedCourtId) {
+    const adminCourtId = selectedCourtId || (userRole === 'superAdmin' ? superAdminCourtId : null);
+    if (!user || !adminCourtId) {
       setManagedAdminIds({});
       setIsAdmin(false);
       return;
     }
 
-    const adminsRef = ref(db, `boardAdmins/${selectedCourtId}`);
+    const adminsRef = ref(db, `boardAdmins/${adminCourtId}`);
     setIsAdmin(userRole === 'superAdmin' || managedAdminIds[user.uid] === true);
     const unsubscribe = onValue(adminsRef, (snapshot) => {
       const admins = snapshot.val() || {};
@@ -409,7 +414,7 @@ export default function BadmintonApp() {
     });
 
     return () => unsubscribe();
-  }, [user, userRole, selectedCourtId]);
+  }, [user, userRole, selectedCourtId, superAdminCourtId]);
 
   // Admin Login Handler
   const handleAdminLogin = async (e) => {
@@ -436,6 +441,11 @@ export default function BadmintonApp() {
       setUserRole(role);
       setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
       setIsAdmin(hasAdminAccess);
+      if (role === 'superAdmin') {
+        setSelectedCourtId(null);
+        setSuperAdminSection('dashboard');
+        setActiveTab('dashboard');
+      }
       if (role !== 'superAdmin' && courtIds.length === 1) {
         setSelectedCourtId(courtIds[0]);
       }
@@ -634,12 +644,13 @@ export default function BadmintonApp() {
   const handleAddCourtAdmin = async (e) => {
     e.preventDefault();
     if (userRole !== 'superAdmin') return;
+    const targetCourtId = selectedCourtId || superAdminCourtId;
     const adminUid = adminUidInput.trim();
     if (!adminUid) return;
 
     setIsProcessing(true);
     try {
-      await set(ref(db, `boardAdmins/${selectedCourtId}/${adminUid}`), true);
+      await set(ref(db, `boardAdmins/${targetCourtId}/${adminUid}`), true);
       setAdminUidInput('');
       showToast('เพิ่มผู้ดูแลคอร์ดเรียบร้อยแล้ว', 'success');
     } catch (error) {
@@ -651,10 +662,11 @@ export default function BadmintonApp() {
 
   const handleRemoveCourtAdmin = async (adminUid) => {
     if (userRole !== 'superAdmin') return;
+    const targetCourtId = selectedCourtId || superAdminCourtId;
 
     setIsProcessing(true);
     try {
-      await remove(ref(db, `boardAdmins/${selectedCourtId}/${adminUid}`));
+      await remove(ref(db, `boardAdmins/${targetCourtId}/${adminUid}`));
       showToast('ถอดสิทธิ์ผู้ดูแลคอร์ดแล้ว', 'success');
     } catch (error) {
       console.error(error);
@@ -1209,6 +1221,134 @@ export default function BadmintonApp() {
     ? COURTS.filter(courtItem => assignedCourtIds.includes(courtItem.id))
     : COURTS;
   const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
+  const superAdminCourt = COURTS.find(courtItem => courtItem.id === superAdminCourtId) || COURTS[0];
+
+  if (!selectedCourtId && user?.email && userRole === 'superAdmin') {
+    return (
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-slate-50 text-gray-800 max-w-md mx-auto relative shadow-2xl overflow-x-hidden pb-6">
+        <header className="bg-slate-950 text-white px-5 pt-10 pb-5 sticky top-0 z-20">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-indigo-300 font-semibold tracking-wide">BADBEAOW CONTROL CENTER</div>
+              <h1 className="text-xl font-black mt-1">ศูนย์ควบคุมระบบ</h1>
+            </div>
+            <button onClick={handleLogout} className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl" title="ออกจากระบบ">
+              <LogOut size={18} />
+            </button>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setSuperAdminSection('dashboard')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'dashboard' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
+              ภาพรวม
+            </button>
+            <button onClick={() => setSuperAdminSection('admins')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'admins' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
+              ผู้ดูแล
+            </button>
+          </div>
+        </header>
+
+        {superAdminSection === 'dashboard' ? (
+          <main className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'ผู้เล่นทั้งหมด', value: dashboardSummary.playerCount, color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'มาเล่นวันนี้', value: dashboardSummary.presentCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'คู่รอสนาม', value: dashboardSummary.queueCount, color: 'text-amber-600', bg: 'bg-amber-50' },
+                { label: 'สนามกำลังแข่ง', value: dashboardSummary.playingCount, color: 'text-purple-600', bg: 'bg-purple-50' },
+              ].map(metric => (
+                <div key={metric.label} className={`${metric.bg} rounded-2xl p-4 shadow-sm`}>
+                  <div className="text-[11px] text-gray-500">{metric.label}</div>
+                  <div className={`text-2xl font-black mt-1 ${metric.color}`}>{metric.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-[15px] font-bold">สถานะทุกคอร์ด</h2>
+                <span className="text-xs font-bold text-red-500">หนี้รวม {dashboardSummary.debtTotal.toFixed(2)} ฿</span>
+              </div>
+              <div className="space-y-3">
+                {dashboardSummary.courts.map(courtItem => {
+                  const isExpanded = expandedCourtIds[courtItem.id];
+                  const courtDetails = dashboardData[courtItem.id] || {};
+                  const detailPlayers = courtDetails.players || [];
+                  const presentNames = detailPlayers.filter(player => player.isPresent && player.attendanceDate === todayKey).map(player => player.name);
+                  const teamA = courtDetails.court?.teamA || [];
+                  const teamB = courtDetails.court?.teamB || [];
+
+                  return (
+                    <div key={courtItem.id} className="border border-gray-100 rounded-2xl overflow-hidden hover:shadow-sm transition-shadow">
+                      <div className="p-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className={`font-bold ${courtItem.text}`}>{courtItem.name}</span>
+                          <span className={`text-[10px] rounded-full px-2 py-1 font-bold ${courtItem.isPlaying ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>{courtItem.isPlaying ? 'กำลังแข่ง' : 'สนามว่าง'}</span>
+                        </div>
+                        <div className="grid grid-cols-4 text-center">
+                          <div><b>{courtItem.playerCount}</b><small className="block text-[9px] text-gray-400">ผู้เล่น</small></div>
+                          <div><b className="text-emerald-600">{courtItem.presentCount}</b><small className="block text-[9px] text-gray-400">มาวันนี้</small></div>
+                          <div><b className="text-amber-600">{courtItem.queueCount}</b><small className="block text-[9px] text-gray-400">คู่รอ</small></div>
+                          <div><b className="text-red-500">{courtItem.debtTotal.toFixed(0)}</b><small className="block text-[9px] text-gray-400">หนี้ ฿</small></div>
+                        </div>
+                        <button onClick={() => setExpandedCourtIds(previous => ({ ...previous, [courtItem.id]: !previous[courtItem.id] }))} className="w-full mt-3 pt-3 border-t border-gray-100 flex items-center justify-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-800">
+                          {isExpanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                          <ChevronDown size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="bg-gray-50 border-t border-gray-100 p-4 space-y-3 text-xs">
+                          <div>
+                            <div className="font-bold text-gray-700 mb-1">ผู้เล่นที่มาเล่นวันนี้</div>
+                            <div className="text-gray-500">{presentNames.length > 0 ? presentNames.join(' , ') : 'ยังไม่มีผู้เล่นเช็คชื่อวันนี้'}</div>
+                          </div>
+                          <div>
+                            <div className="font-bold text-gray-700 mb-1">สนามปัจจุบัน</div>
+                            <div className="text-gray-500">
+                              {courtItem.isPlaying ? `ทีม A: ${teamA.map(player => player.name).join(' / ') || '-'} | ทีม B: ${teamB.map(player => player.name).join(' / ') || '-'}` : 'สนามว่าง'}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-gray-700">ยอดค้างชำระ</span>
+                            <span className="font-black text-red-500">{courtItem.debtTotal.toFixed(2)} ฿</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </main>
+        ) : (
+          <main className="p-4 space-y-4">
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+              <h2 className="text-[15px] font-bold">เพิ่มผู้ดูแลคอร์ด</h2>
+              <p className="text-[11px] text-gray-500 mt-1">เลือกคอร์ดและใส่ Firebase Auth UID</p>
+              <select value={superAdminCourtId} onChange={event => setSuperAdminCourtId(event.target.value)} className="w-full mt-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm">
+                {COURTS.map(courtItem => <option key={courtItem.id} value={courtItem.id}>{courtItem.name}</option>)}
+              </select>
+              <form onSubmit={handleAddCourtAdmin} className="mt-3 space-y-3">
+                <input value={adminUidInput} onChange={event => setAdminUidInput(event.target.value)} placeholder="Firebase Auth UID" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm" />
+                <button type="submit" disabled={isProcessing || !adminUidInput.trim()} className="w-full bg-slate-900 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-50">เพิ่ม Admin ให้ {superAdminCourt.name}</button>
+              </form>
+            </div>
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+              <h2 className="text-[15px] font-bold mb-3">Admin ของ {superAdminCourt.name}</h2>
+              {Object.keys(managedAdminIds).length === 0 ? <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Admin</p> : (
+                <div className="space-y-2">
+                  {Object.keys(managedAdminIds).map(adminUid => (
+                    <div key={adminUid} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3">
+                      <span className="text-xs break-all text-gray-600">{adminUid}</span>
+                      <button onClick={() => handleRemoveCourtAdmin(adminUid)} disabled={isProcessing} className="shrink-0 bg-red-50 text-red-600 rounded-lg px-3 py-2 text-xs font-bold">ถอดสิทธิ์</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+        )}
+      </div>
+    );
+  }
 
   if (!selectedCourtId) {
     return (
