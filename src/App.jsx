@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -63,6 +63,10 @@ export default function BadmintonApp() {
   const [playerToEdit, setPlayerToEdit] = useState(null);
   const [editPlayerName, setEditPlayerName] = useState('');
 
+  // Drag and Drop State
+  const [draggedQueueIdx, setDraggedQueueIdx] = useState(null);
+  const [dragOverQueueIdx, setDragOverQueueIdx] = useState(null);
+
   // Search State
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
@@ -76,7 +80,7 @@ export default function BadmintonApp() {
     return { label: 'มือใหม่ 🌱', color: 'bg-gray-100 text-gray-500 border-gray-200' };
   };
 
-  // Inject Tailwind CSS CDN & Google Font & Custom Animations
+  // Inject Tailwind CSS CDN, Fonts, Animations, and Mobile Drag&Drop Polyfill
   useEffect(() => {
     const tailwindScript = document.createElement('script');
     tailwindScript.src = 'https://cdn.tailwindcss.com';
@@ -107,13 +111,39 @@ export default function BadmintonApp() {
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
+      /* คลาสสำหรับลด Opacity ตอนลากคิว */
+      .dragging {
+        opacity: 0.4;
+      }
     `;
     document.head.appendChild(style);
+
+    // ฝัง Mobile Drag and Drop Polyfill ให้รองรับการกดค้างลากบนมือถือได้
+    const polyfillScript = document.createElement('script');
+    polyfillScript.src = 'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js';
+    const polyfillStyle = document.createElement('link');
+    polyfillStyle.rel = 'stylesheet';
+    polyfillStyle.href = 'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css';
+    
+    document.head.appendChild(polyfillScript);
+    document.head.appendChild(polyfillStyle);
+
+    polyfillScript.onload = () => {
+        if (window.MobileDragDrop) {
+            window.MobileDragDrop.polyfill({
+                dragImageTranslateOverride: window.MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
+                holdToDrag: 300 // กดค้าง 0.3 วิ เพื่อเริ่มลาก
+            });
+            window.addEventListener('touchmove', function() {}, {passive: false});
+        }
+    };
 
     return () => {
       document.head.removeChild(tailwindScript);
       document.head.removeChild(link);
       document.head.removeChild(style);
+      document.head.removeChild(polyfillScript);
+      document.head.removeChild(polyfillStyle);
     };
   }, []);
 
@@ -263,6 +293,66 @@ export default function BadmintonApp() {
   const rankedPlayers = useMemo(() => {
     return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0));
   }, [players]);
+
+  // Drag & Drop Handlers
+  const handleDragStart = (e, index) => {
+    if (!isAdmin) return;
+    setDraggedQueueIdx(index);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', e.target.parentNode);
+    }
+  };
+
+  const handleDragOver = (e, index) => {
+    if (!isAdmin) return;
+    e.preventDefault(); // จำเป็นต้องมีเพื่อให้ Drop ได้
+    if (dragOverQueueIdx !== index) {
+      setDragOverQueueIdx(index);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedQueueIdx(null);
+    setDragOverQueueIdx(null);
+  };
+
+  const handleDrop = async (e, dropIndex) => {
+    if (!isAdmin) return;
+    e.preventDefault();
+    
+    const dragIdx = draggedQueueIdx;
+    setDraggedQueueIdx(null);
+    setDragOverQueueIdx(null);
+
+    // ถ้าไม่ได้ลาก หรือลากมาวางที่เดิม ให้ยกเลิก
+    if (dragIdx === null || dragIdx === dropIndex) return;
+
+    setIsProcessing(true);
+    try {
+      const newQueue = [...queue];
+      const [draggedItem] = newQueue.splice(dragIdx, 1);
+      newQueue.splice(dropIndex, 0, draggedItem); // แทรกในตำแหน่งใหม่
+
+      // จัดลำดับ sortOrder ใหม่ทั้งคิว ให้ระยะห่างเท่าๆ กัน
+      const updates = {};
+      newQueue.forEach((q, i) => {
+        updates[`${q.id}/sortOrder`] = (i + 1) * 100;
+        if (q.id === draggedItem.id) {
+          updates[`${q.id}/isMoved`] = true;
+          updates[`${q.id}/moveDirection`] = dropIndex < dragIdx ? 'up' : 'down';
+        }
+      });
+
+      await update(ref(db, 'badbeaow/queue'), updates);
+      
+      setHighlightedQueueId(draggedItem.id);
+      setTimeout(() => setHighlightedQueueId(null), 3000);
+    } catch (error) {
+      console.error(error);
+    }
+    setIsProcessing(false);
+  };
 
   // Handlers
   const handleAddPlayer = async (e) => {
@@ -497,7 +587,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete) return; // ลบเช็ค isAdmin ออก ทุกคนสามารถลบได้
+    if (!queueToDelete) return; 
     setIsProcessing(true);
     try {
       await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
@@ -862,7 +952,7 @@ export default function BadmintonApp() {
               </button>
             </div>
 
-            {/* Queue List */}
+            {/* Queue List (With Drag & Drop) */}
             <div>
               <h3 className="text-[15px] font-bold text-gray-800 mb-3 flex items-center justify-between">
                 คิวรอสนาม <span className="text-[11px] font-medium text-gray-500">{queue.length} คู่</span>
@@ -871,43 +961,71 @@ export default function BadmintonApp() {
                 <div className="text-center py-8 bg-white border border-gray-100 rounded-3xl text-gray-400 text-[13px] shadow-sm">ยังไม่มีคิวรอ</div>
               ) : (
                 <div className="space-y-3">
-                  {queue.map((q, idx) => (
-                    <div key={q.id} className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all ${q.id === highlightedQueueId ? 'queue-highlight ' : ''} ${q.isMoved ? 'bg-fuchsia-50 border-fuchsia-400' : 'bg-white border-gray-100 shadow-sm'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[13px] font-bold ${q.isMoved ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-purple-50 text-purple-700'}`}>
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-gray-700 text-sm">
-                            {q.pair ? q.pair.map(p => p.name).join(' & ') : ''}
-                          </div>
-                          {q.isMoved && (
-                            <div className="text-[10px] text-fuchsia-600 font-bold mt-0.5">
-                              {q.moveDirection === 'up' ? '🔼 ถูกเลื่อนขึ้น (แซงคิว)' : '🔽 ถูกเลื่อนลง'}
+                  {queue.map((q, idx) => {
+                    // กำหนด Styling เวลาที่มีการลาก (Drag & Drop)
+                    const isDragging = draggedQueueIdx === idx;
+                    const isDragOver = dragOverQueueIdx === idx;
+                    let dragClass = '';
+                    if (isDragging) dragClass = 'opacity-50 scale-95 shadow-inner bg-gray-50 border-purple-400';
+                    else if (isDragOver && draggedQueueIdx !== null && draggedQueueIdx !== idx) {
+                        dragClass = draggedQueueIdx < idx ? 'border-b-4 border-b-purple-500 transform -translate-y-1' : 'border-t-4 border-t-purple-500 transform translate-y-1';
+                    }
+
+                    return (
+                      <div 
+                        key={q.id} 
+                        draggable={isAdmin}
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={(e) => handleDrop(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all duration-200 
+                          ${q.id === highlightedQueueId ? 'queue-highlight ' : ''} 
+                          ${q.isMoved ? 'bg-fuchsia-50 border-fuchsia-400' : 'bg-white border-gray-100 shadow-sm'}
+                          ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}
+                          ${dragClass}
+                        `}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isAdmin && (
+                            <div className="text-gray-300 hover:text-gray-500" title="กดค้างแล้วลากเพื่อสลับคิว">
+                                <GripVertical size={18} />
                             </div>
                           )}
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[13px] font-bold ${q.isMoved ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-purple-50 text-purple-700'}`}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-700 text-sm">
+                              {q.pair ? q.pair.map(p => p.name).join(' & ') : ''}
+                            </div>
+                            {q.isMoved && (
+                              <div className="text-[10px] text-fuchsia-600 font-bold mt-0.5">
+                                {q.moveDirection === 'up' ? '🔼 ถูกเลื่อนขึ้น (แซงคิว)' : '🔽 ถูกเลื่อนลง'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* ปุ่มลบคิวแสดงสำหรับทุกคน ส่วนการเลื่อนคิวยังคงเป็นของแอดมิน */}
+                        <div className="flex items-center gap-1">
+                          {isAdmin && (
+                            <div className="flex flex-col gap-1 mr-2">
+                              <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                                <ArrowUp size={16} />
+                              </button>
+                              <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
+                                <ArrowDown size={16} />
+                              </button>
+                            </div>
+                          )}
+                          <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
-                      
-                      {/* แก้ไขให้ปุ่มลบคิวแสดงสำหรับทุกคน ส่วนการเลื่อนคิวยังคงเป็นของแอดมิน */}
-                      <div className="flex items-center gap-1">
-                        {isAdmin && (
-                          <div className="flex flex-col gap-1 mr-2">
-                            <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                              <ArrowUp size={16} />
-                            </button>
-                            <button onClick={() => handleMoveQueue(idx, 'down')} disabled={idx === queue.length - 1 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
-                              <ArrowDown size={16} />
-                            </button>
-                          </div>
-                        )}
-                        <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1014,7 +1132,7 @@ export default function BadmintonApp() {
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
                         
-                        {/* แก้ไขให้ปุ่มลบแสดงสำหรับทุกคน ส่วนปุ่มแก้ชื่อยังคงเป็นของแอดมิน */}
+                        {/* ปุ่มลบแสดงสำหรับทุกคน ส่วนปุ่มแก้ชื่อยังคงเป็นของแอดมิน */}
                         <div className="flex items-center gap-1 pl-1">
                             {isAdmin && (
                               <button onClick={() => handleEditPlayerClick(player)} disabled={isProcessing} className="text-blue-400 hover:text-blue-600 p-1.5 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg">
