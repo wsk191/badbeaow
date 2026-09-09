@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus
+    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -58,12 +58,16 @@ export default function BadmintonApp() {
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
+  
+  // Edit Player State
+  const [playerToEdit, setPlayerToEdit] = useState(null);
+  const [editPlayerName, setEditPlayerName] = useState('');
 
   // Search State
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
 
-  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ (ปรับเกณฑ์เป็นทุกๆ 10 ครั้ง)
+  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ (ทุกๆ 10 ครั้ง)
   const getPowerLevel = (wins = 0) => {
     if (wins >= 40) return { label: 'ระดับเทพ 👑', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
     if (wins >= 30) return { label: 'มือแข็ง 🔥', color: 'bg-orange-100 text-orange-700 border-orange-300' };
@@ -153,7 +157,7 @@ export default function BadmintonApp() {
       setShowLoginModal(false);
       setLoginEmail('');
       setLoginPassword('');
-      showToast('เข้าสู่ระบบแอดมินสำเร็จ (ปลดล็อกเครื่องมือจัดการ)', 'success');
+      showToast('เข้าสู่ระบบแอดมินสำเร็จ (เปิดโหมดผู้ดูแล)', 'success');
     } catch (error) {
       console.error(error);
       setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
@@ -275,7 +279,6 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const playersRef = ref(db, 'badbeaow/players');
-      // เพิ่ม wins: 0 ในการตั้งค่าเริ่มต้น
       await push(playersRef, { name: trimmedName, isPresent: true, debt: 0, wins: 0 });
       setNewPlayerName('');
       showToast('เพิ่มผู้เล่นสำเร็จ!', 'success');
@@ -283,7 +286,68 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
+  const handleEditPlayerClick = (player) => {
+    if (!isAdmin) return;
+    setPlayerToEdit(player);
+    setEditPlayerName(player.name);
+  };
+
+  const confirmEditPlayer = async () => {
+    if (!playerToEdit || !isAdmin) return;
+    const trimmedName = editPlayerName.trim();
+    if (!trimmedName) return;
+
+    // เช็คชื่อซ้ำกับคนอื่น
+    const isDuplicate = players.some(p => p.id !== playerToEdit.id && p.name.toLowerCase() === trimmedName.toLowerCase());
+    if (isDuplicate) {
+      showToast('ชื่อนี้มีอยู่ในระบบแล้ว', 'error');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // 1. อัปเดตในโหนด players
+      await update(ref(db, `badbeaow/players/${playerToEdit.id}`), { name: trimmedName });
+
+      // 2. ตามไปอัปเดตชื่อใน Queue
+      const queueUpdates = {};
+      queue.forEach(q => {
+          if (q.pair) {
+              const pIndex = q.pair.findIndex(p => p.id === playerToEdit.id);
+              if (pIndex !== -1) {
+                  queueUpdates[`${q.id}/pair/${pIndex}/name`] = trimmedName;
+              }
+          }
+      });
+      if (Object.keys(queueUpdates).length > 0) {
+          await update(ref(db, 'badbeaow/queue'), queueUpdates);
+      }
+
+      // 3. ตามไปอัปเดตชื่อใน Court
+      const courtUpdates = {};
+      if (court.teamA) {
+          const pIndex = court.teamA.findIndex(p => p.id === playerToEdit.id);
+          if (pIndex !== -1) courtUpdates[`teamA/${pIndex}/name`] = trimmedName;
+      }
+      if (court.teamB) {
+          const pIndex = court.teamB.findIndex(p => p.id === playerToEdit.id);
+          if (pIndex !== -1) courtUpdates[`teamB/${pIndex}/name`] = trimmedName;
+      }
+      if (Object.keys(courtUpdates).length > 0) {
+          await update(ref(db, 'badbeaow/court'), courtUpdates);
+      }
+
+      setPlayerToEdit(null);
+      showToast('เปลี่ยนชื่อผู้เล่นสำเร็จ!', 'success');
+    } catch (error) { 
+      console.error(error); 
+      showToast('เกิดข้อผิดพลาดในการเปลี่ยนชื่อ', 'error');
+    }
+    setIsProcessing(false);
+  };
+
   const handleDeletePlayerClick = (player) => {
+    if (!isAdmin) return;
     if ((player.debt || 0) > 0) {
       showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
       return;
@@ -406,6 +470,7 @@ export default function BadmintonApp() {
   };
 
   const handleMoveQueue = async (index, direction) => {
+    if (!isAdmin) return;
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === queue.length - 1) return;
 
@@ -433,7 +498,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete) return;
+    if (!queueToDelete || !isAdmin) return;
     setIsProcessing(true);
     try {
       await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
@@ -464,15 +529,14 @@ export default function BadmintonApp() {
       let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
       let winningTeam = winnerTeam === 'A' ? court.teamA : court.teamB;
 
-      // เตรียมอัปเดตข้อมูลผู้เล่นชุดใหญ่ (บันทึกอันดับเก่า และ เพิ่ม/ลดคะแนน)
       const playersUpdates = {};
 
-      // 1. บันทึกอันดับปัจจุบันให้ทุกคนก่อนเปลี่ยนคะแนน (เพื่อไว้เทียบ ขึ้น/ลง/คงที่)
+      // บันทึกอันดับปัจจุบัน
       rankedPlayers.forEach((p, index) => {
         playersUpdates[`${p.id}/previousRank`] = index + 1;
       });
 
-      // 2. ทีมชนะ ได้แต้ม +1
+      // ทีมชนะ ได้แต้ม +1
       if (winningTeam) {
         winningTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
@@ -480,23 +544,21 @@ export default function BadmintonApp() {
         });
       }
 
-      // 3. ทีมแพ้ โดนหักแต้ม -1 (แต่ไม่ต่ำกว่า 0)
+      // ทีมแพ้ โดนหักแต้ม -1 (ต่ำสุด 0)
       if (losingTeam) {
         losingTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
           playersUpdates[`${player.id}/wins`] = Math.max(0, (dbPlayer?.wins || 0) - 1);
         });
         
-        // ส่งคิวทีมแพ้ไปต่อแถวใหม่
         const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
         const queueRef = ref(db, 'badbeaow/queue');
         await push(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
       }
 
-      // ทำการอัปเดตข้อมูลผู้เล่นทั้งหมดรวดเดียว
       await update(ref(db, `badbeaow/players`), playersUpdates);
 
-      // ดึงคู่ถัดไปลงสนาม
+      // ดึงคู่ถัดไป
       if (queue.length > 0) {
         const nextPairObj = queue[0];
         const nextPair = nextPairObj.pair;
@@ -655,14 +717,14 @@ export default function BadmintonApp() {
               onClick={handleLogout}
               className="bg-red-50 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm hover:bg-red-100 transition-colors"
             >
-              <LogOut size={13} /> ออกจากระบบแอดมิน
+              <LogOut size={13} /> โหมดผู้ดูแล
             </button>
           ) : (
             <button 
               onClick={() => setShowLoginModal(true)}
               className="bg-emerald-50 text-emerald-600 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm hover:bg-emerald-100 transition-colors"
             >
-              <Lock size={13} /> ล็อกอินแอดมิน
+              <Lock size={13} /> เข้าสู่ระบบแอดมิน
             </button>
           )}
         </div>
@@ -719,13 +781,12 @@ export default function BadmintonApp() {
                       </button>
                     </div>
                   )}
-                  {isAdmin && (
-                    <div className="text-center pt-1">
-                      <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white">
-                        เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
-                      </button>
-                    </div>
-                  )}
+                  {/* ปุ่มเคลียร์สนาม ให้ทุกคนสามารถกดได้เสมอ ไม่โดนซ่อนด้วย isAdmin */}
+                  <div className="text-center pt-1">
+                    <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white transition-colors">
+                      เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -953,9 +1014,14 @@ export default function BadmintonApp() {
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
                         {isAdmin && (
-                          <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1 transition-colors">
-                            <Trash2 size={16} />
-                          </button>
+                          <div className="flex items-center gap-1 pl-1">
+                              <button onClick={() => handleEditPlayerClick(player)} disabled={isProcessing} className="text-blue-400 hover:text-blue-600 p-1.5 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg">
+                                <Edit2 size={15} />
+                              </button>
+                              <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1.5 transition-colors bg-red-50 hover:bg-red-100 rounded-lg">
+                                <Trash2 size={15} />
+                              </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -997,19 +1063,15 @@ export default function BadmintonApp() {
                 ) : (
                   rankedPlayers.map((player, index) => {
                     const currentRank = index + 1;
-                    
-                    // คำนวณความต่างของอันดับ
                     const prevRank = player.previousRank || currentRank;
-                    const rankDiff = prevRank - currentRank; // ค่าบวกคือขึ้น, ค่าลบคือลง
+                    const rankDiff = prevRank - currentRank; 
 
-                    // กำหนดสีตัวเลขลำดับ 1-3
                     let rankColor = 'text-gray-300';
                     let rankBg = 'bg-gray-50';
                     if (currentRank === 1) { rankColor = 'text-yellow-600'; rankBg = 'bg-yellow-100 border-yellow-200'; }
                     else if (currentRank === 2) { rankColor = 'text-slate-500'; rankBg = 'bg-slate-100 border-slate-200'; }
                     else if (currentRank === 3) { rankColor = 'text-orange-600'; rankBg = 'bg-orange-100 border-orange-200'; }
 
-                    // กำหนดไอคอนและสีของการเปลี่ยนแปลงอันดับ
                     let RankIcon = null;
                     let rankChangeColor = '';
                     if (rankDiff > 0) {
@@ -1026,8 +1088,6 @@ export default function BadmintonApp() {
                     return (
                       <div key={player.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                         <div className="flex items-center gap-4">
-                          
-                          {/* กรอบบอกอันดับ และ สัญลักษณ์ขึ้นลง */}
                           <div className="flex flex-col items-center gap-1.5 w-10">
                             <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-sm ${rankColor} ${rankBg}`}>
                               {currentRank}
@@ -1039,7 +1099,6 @@ export default function BadmintonApp() {
                                 </div>
                             )}
                           </div>
-                          
                           <div>
                             <div className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
                               {player.name}
@@ -1048,7 +1107,6 @@ export default function BadmintonApp() {
                             <div className="text-[11px] text-gray-500 mt-0.5">ชนะทั้งหมด {player.wins || 0} แมตช์</div>
                           </div>
                         </div>
-                        
                         <div>
                           <span className={`text-[10px] px-2.5 py-1 rounded-full border font-semibold ${getPowerLevel(player.wins).color}`}>
                             {getPowerLevel(player.wins).label}
@@ -1237,6 +1295,28 @@ export default function BadmintonApp() {
                 <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">ปลดล็อก</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Player Modal (แอดมิน) */}
+      {playerToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">แก้ไขชื่อผู้เล่น</h3>
+            <p className="text-xs text-gray-500 mb-4">ระบบจะอัปเดตชื่อใหม่ให้ในคิวและบนสนามด้วย</p>
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                value={editPlayerName} 
+                onChange={(e) => setEditPlayerName(e.target.value)} 
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setPlayerToEdit(null)} disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">ยกเลิก</button>
+                <button onClick={confirmEditPlayer} disabled={isProcessing || !editPlayerName.trim()} className="flex-1 py-3 rounded-xl font-semibold bg-blue-500 hover:bg-blue-600 text-white shadow-md transition-colors disabled:opacity-50">บันทึกชื่อ</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
