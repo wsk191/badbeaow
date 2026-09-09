@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -82,6 +82,7 @@ export default function BadmintonApp() {
   const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
   const [adminUidInput, setAdminUidInput] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   
   // Edit Player State
   const [playerToEdit, setPlayerToEdit] = useState(null);
@@ -1419,6 +1420,13 @@ export default function BadmintonApp() {
           ))}
         </div>
 
+        <button
+          onClick={() => setShowGuide(true)}
+          className="w-full mt-5 bg-white border border-purple-100 text-purple-700 rounded-2xl py-3.5 font-bold text-sm shadow-sm hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <BookOpen size={18} /> คู่มือการใช้งาน
+        </button>
+
         {isLoggedInAdmin ? (
           <button
             onClick={handleLogout}
@@ -1439,9 +1447,52 @@ export default function BadmintonApp() {
           <p className="mt-6 text-center text-xs text-red-500">บัญชีนี้ยังไม่ได้รับสิทธิ์ดูแลคอร์ด</p>
         )}
 
-        <div className="mt-8 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm text-center text-xs text-gray-500">
+        <div className="mt-8 text-center text-xs text-gray-500">
           ข้อมูลคิว ผู้เล่น และการเงินจะแยกตามคอร์ดที่เลือก
         </div>
+
+        {showGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm max-h-[85vh] shadow-2xl overflow-y-auto">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2 text-purple-700"><BookOpen size={21} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
+                  <p className="text-xs text-gray-500 mt-1">BADBEAOW ระบบจัดการคิวตีแบด</p>
+                </div>
+                <button onClick={() => setShowGuide(false)} className="p-1 text-gray-400 hover:text-gray-700" aria-label="ปิดคู่มือ"><X size={20} /></button>
+              </div>
+              <div className="space-y-4 text-sm text-gray-700">
+                <section>
+                  <h3 className="font-bold text-gray-900 mb-1.5">เริ่มต้นใช้งาน</h3>
+                  <ol className="list-decimal list-inside space-y-1 text-gray-600">
+                    <li>เลือกคอร์ดที่ต้องการใช้งาน</li>
+                    <li>ไปที่ <b>รายชื่อ</b> แล้วเปิดสวิตช์คนที่มาเล่นวันนี้</li>
+                    <li>ไปที่ <b>คิวสนาม</b> เลือกผู้เล่น 2 คน แล้วเพิ่มเข้าคิว</li>
+                  </ol>
+                </section>
+                <section>
+                  <h3 className="font-bold text-gray-900 mb-1.5">จัดคิวและเริ่มแข่ง</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-600">
+                    <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
+                    <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
+                    <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
+                    <li>แอดมินสามารถแตะค้างที่ไอคอนลากเพื่อสลับลำดับคิว</li>
+                  </ul>
+                </section>
+                <section>
+                  <h3 className="font-bold text-gray-900 mb-1.5">ดูอันดับและการเงิน</h3>
+                  <ul className="list-disc list-inside space-y-1 text-gray-600">
+                    <li>ดูอันดับผู้เล่นได้ที่เมนู <b>จัดอันดับ</b> โดยเลือกดูเฉพาะคอร์ดหรือรวม 4 คอร์ด</li>
+                    <li>แอดมินกดเข้าสู่ระบบเพื่อแก้ไขข้อมูลผู้เล่น จัดการคิว และใช้เมนูคิดเงิน</li>
+                  </ul>
+                </section>
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">
+                  <b>หมายเหตุ:</b> ข้อมูลคิว ผู้เล่น และการเงินจะแยกตามคอร์ดที่เลือก
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showLoginModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -2217,6 +2268,69 @@ export default function BadmintonApp() {
               <ShieldCheck size={18} /> ผู้ดูแล
             </button>
           )}
+          <button
+            onClick={() => { setShowGuide(true); setShowMoreMenu(false); }}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            <BookOpen size={18} /> คู่มือการใช้งาน
+          </button>
+        </div>
+      )}
+
+      {showGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className={`bg-gradient-to-br ${selectedCourt.accent} p-5 text-white flex items-start justify-between`}>
+              <div>
+                <div className="flex items-center gap-2 mb-1"><BookOpen size={21} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
+                <p className="text-xs text-white/75">BADBEAOW ระบบจัดการคิวตีแบด</p>
+              </div>
+              <button onClick={() => setShowGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือ"><X size={20} /></button>
+            </div>
+
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-92px)] text-sm text-gray-700 space-y-5">
+              <section>
+                <h3 className="font-bold text-gray-900 mb-2">เริ่มต้นใช้งาน</h3>
+                <ol className="list-decimal list-inside space-y-1.5 text-gray-600">
+                  <li>เลือกคอร์ดที่ต้องการใช้งาน</li>
+                  <li>เปิดเมนู <b>รายชื่อ</b> แล้วเปิดสวิตช์ข้างชื่อคนที่มาเล่นวันนี้</li>
+                  <li>ไปที่ <b>คิวสนาม</b> เลือกผู้เล่น 2 คน แล้วกด <b>เพิ่มเข้าคิวรอ</b></li>
+                </ol>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-gray-900 mb-2">จัดคิวและเริ่มแข่ง</h3>
+                <ul className="list-disc list-inside space-y-1.5 text-gray-600">
+                  <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
+                  <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
+                  <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
+                  <li>แอดมินสามารถแตะค้างที่ไอคอนลากเพื่อสลับลำดับคิว</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-gray-900 mb-2">ดูรายชื่อและอันดับ</h3>
+                <ul className="list-disc list-inside space-y-1.5 text-gray-600">
+                  <li><b>รายชื่อ</b> ใช้ค้นหาชื่อ เช็คชื่อ แก้ไข หรือลบผู้เล่น</li>
+                  <li><b>จัดอันดับ</b> แสดงผู้เล่นที่ชนะมากที่สุด เลือกดูเฉพาะคอร์ดหรือรวม 4 คอร์ดได้</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-gray-900 mb-2">การเงินสำหรับแอดมิน</h3>
+                <ul className="list-disc list-inside space-y-1.5 text-gray-600">
+                  <li>กด <b>เข้าสู่ระบบแอดมิน</b> ที่มุมขวาบนเพื่อปลดล็อกเครื่องมือ</li>
+                  <li>แท็บ <b>คิดเงิน</b> ใช้เก็บค่าบำรุงคนละ 10 บาท หรือหารค่าคอร์ตตามบิลรวม</li>
+                  <li>บันทึกยอดที่ผู้เล่นชำระในรายการค้างจ่าย แล้วกด <b>จ่าย</b></li>
+                  <li>เมนู <b>เพิ่มเติม &gt; ภาพรวม</b> ใช้ดูสถานะทุกคอร์ดแบบเรียลไทม์</li>
+                </ul>
+              </section>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">
+                <b>หมายเหตุ:</b> การลบผู้เล่นและการล้างระบบเป็นการกระทำถาวร ควรตรวจสอบให้แน่ใจก่อนยืนยันทุกครั้ง
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
