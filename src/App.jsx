@@ -178,8 +178,7 @@ export default function BadmintonApp() {
       .splash-letter:nth-child(7) { animation-delay: 0.78s; }
       .splash-letter:nth-child(8) { animation-delay: 0.91s; }
       @keyframes splash-screen-exit {
-        0%, 65% { opacity: 1; }
-        100% { opacity: 0; }
+        0%, 100% { opacity: 1; }
       }
       @keyframes splash-o-impact {
         0%, 100% { transform: scale(1) rotate(0); }
@@ -1226,6 +1225,24 @@ export default function BadmintonApp() {
   if (!selectedCourtId && user?.email && userRole === 'superAdmin') {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-slate-50 text-gray-800 max-w-md mx-auto relative shadow-2xl overflow-x-hidden pb-6">
+        {showSplash && (
+          <div
+            className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
+          >
+            <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+              <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
+                {'BADBEAOW'.split('').map((letter, index) => (
+                  <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+                ))}
+              </h1>
+              <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+              <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                กำลังเตรียมระบบ...
+              </div>
+            </div>
+          </div>
+        )}
         <header className="bg-slate-950 text-white px-5 pt-10 pb-5 sticky top-0 z-20">
           <div className="flex items-center justify-between">
             <div>
