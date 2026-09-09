@@ -186,7 +186,7 @@ export default function BadmintonApp() {
         inset: 0;
         z-index: 1;
         pointer-events: none;
-        background: #ff684f;
+        background: #ffffff;
         animation: splash-light-flash 0.5s ease-out forwards;
       }
       .splash-screen-exiting .splash-title {
