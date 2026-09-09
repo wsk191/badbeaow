@@ -71,7 +71,7 @@ export default function BadmintonApp() {
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
 
-  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ (ทุกๆ 10 ครั้ง)
+  // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ
   const getPowerLevel = (wins = 0) => {
     if (wins >= 40) return { label: 'ระดับเทพ 👑', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
     if (wins >= 30) return { label: 'มือแข็ง 🔥', color: 'bg-orange-100 text-orange-700 border-orange-300' };
@@ -111,14 +111,16 @@ export default function BadmintonApp() {
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
-      /* คลาสสำหรับลด Opacity ตอนลากคิว */
-      .dragging {
-        opacity: 0.4;
+      /* ป้องกันการคลุมดำข้อความและเมนูเด้งตอนลากในมือถือ */
+      .queue-item {
+        -webkit-touch-callout: none; /* iOS Safari */
+        -webkit-user-select: none; /* Safari */
+        user-select: none; /* Standard */
       }
     `;
     document.head.appendChild(style);
 
-    // ฝัง Mobile Drag and Drop Polyfill ให้รองรับการกดค้างลากบนมือถือได้
+    // ฝัง Mobile Drag and Drop Polyfill ให้รองรับมือถือ
     const polyfillScript = document.createElement('script');
     polyfillScript.src = 'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js';
     const polyfillStyle = document.createElement('link');
@@ -132,7 +134,7 @@ export default function BadmintonApp() {
         if (window.MobileDragDrop) {
             window.MobileDragDrop.polyfill({
                 dragImageTranslateOverride: window.MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
-                holdToDrag: 300 // กดค้าง 0.3 วิ เพื่อเริ่มลาก
+                holdToDrag: 150 // ลดเวลาลงให้กดค้างปุ๊บลากได้เลย (0.15 วินาที)
             });
             window.addEventListener('touchmove', function() {}, {passive: false});
         }
@@ -195,7 +197,6 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  // Logout Handler
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -210,7 +211,6 @@ export default function BadmintonApp() {
   useEffect(() => {
     if (!user) return;
 
-    // Listen to Players
     const playersRef = ref(db, 'badbeaow/players');
     const unsubPlayers = onValue(playersRef, (snapshot) => {
       const data = snapshot.val();
@@ -224,7 +224,6 @@ export default function BadmintonApp() {
       setLoading(false);
     });
 
-    // Listen to Queue
     const queueRef = ref(db, 'badbeaow/queue');
     const unsubQueue = onValue(queueRef, (snapshot) => {
       const data = snapshot.val();
@@ -237,7 +236,6 @@ export default function BadmintonApp() {
       }
     });
 
-    // Listen to Court
     const courtRef = ref(db, 'badbeaow/court');
     const unsubCourt = onValue(courtRef, (snapshot) => {
       const data = snapshot.val();
@@ -289,24 +287,38 @@ export default function BadmintonApp() {
 
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
-  // จัดเรียงผู้เล่นตามจำนวนรอบที่ชนะ (จากมากไปน้อย) สำหรับ Leaderboard
   const rankedPlayers = useMemo(() => {
     return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0));
   }, [players]);
 
-  // Drag & Drop Handlers
+  // --- Drag & Drop Handlers สำหรับจัดคิว ---
   const handleDragStart = (e, index) => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      e.preventDefault();
+      return;
+    }
     setDraggedQueueIdx(index);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/html', e.target.parentNode);
+      // สำคัญ: ต้องใส่ setData เพื่อให้ Polyfill และบางเบราว์เซอร์ทำงานได้สมบูรณ์
+      e.dataTransfer.setData('text/plain', index.toString()); 
+    }
+  };
+
+  const handleDragEnter = (e, index) => {
+    if (!isAdmin) return;
+    e.preventDefault();
+    if (dragOverQueueIdx !== index) {
+      setDragOverQueueIdx(index);
     }
   };
 
   const handleDragOver = (e, index) => {
     if (!isAdmin) return;
-    e.preventDefault(); // จำเป็นต้องมีเพื่อให้ Drop ได้
+    e.preventDefault(); // สำคัญ: ต้องใส่เพื่อให้ลากไปวางได้
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
     if (dragOverQueueIdx !== index) {
       setDragOverQueueIdx(index);
     }
@@ -325,16 +337,14 @@ export default function BadmintonApp() {
     setDraggedQueueIdx(null);
     setDragOverQueueIdx(null);
 
-    // ถ้าไม่ได้ลาก หรือลากมาวางที่เดิม ให้ยกเลิก
     if (dragIdx === null || dragIdx === dropIndex) return;
 
     setIsProcessing(true);
     try {
       const newQueue = [...queue];
       const [draggedItem] = newQueue.splice(dragIdx, 1);
-      newQueue.splice(dropIndex, 0, draggedItem); // แทรกในตำแหน่งใหม่
+      newQueue.splice(dropIndex, 0, draggedItem); 
 
-      // จัดลำดับ sortOrder ใหม่ทั้งคิว ให้ระยะห่างเท่าๆ กัน
       const updates = {};
       newQueue.forEach((q, i) => {
         updates[`${q.id}/sortOrder`] = (i + 1) * 100;
@@ -353,8 +363,8 @@ export default function BadmintonApp() {
     }
     setIsProcessing(false);
   };
+  // ----------------------------------------
 
-  // Handlers
   const handleAddPlayer = async (e) => {
     e.preventDefault();
     const trimmedName = newPlayerName.trim();
@@ -387,7 +397,6 @@ export default function BadmintonApp() {
     const trimmedName = editPlayerName.trim();
     if (!trimmedName) return;
 
-    // เช็คชื่อซ้ำกับคนอื่น
     const isDuplicate = players.some(p => p.id !== playerToEdit.id && p.name.toLowerCase() === trimmedName.toLowerCase());
     if (isDuplicate) {
       showToast('ชื่อนี้มีอยู่ในระบบแล้ว', 'error');
@@ -396,10 +405,8 @@ export default function BadmintonApp() {
 
     setIsProcessing(true);
     try {
-      // 1. อัปเดตในโหนด players
       await update(ref(db, `badbeaow/players/${playerToEdit.id}`), { name: trimmedName });
 
-      // 2. ตามไปอัปเดตชื่อใน Queue
       const queueUpdates = {};
       queue.forEach(q => {
           if (q.pair) {
@@ -413,7 +420,6 @@ export default function BadmintonApp() {
           await update(ref(db, 'badbeaow/queue'), queueUpdates);
       }
 
-      // 3. ตามไปอัปเดตชื่อใน Court
       const courtUpdates = {};
       if (court.teamA) {
           const pIndex = court.teamA.findIndex(p => p.id === playerToEdit.id);
@@ -620,12 +626,10 @@ export default function BadmintonApp() {
 
       const playersUpdates = {};
 
-      // บันทึกอันดับปัจจุบัน
       rankedPlayers.forEach((p, index) => {
         playersUpdates[`${p.id}/previousRank`] = index + 1;
       });
 
-      // ทีมชนะ ได้แต้ม +1
       if (winningTeam) {
         winningTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
@@ -633,7 +637,6 @@ export default function BadmintonApp() {
         });
       }
 
-      // ทีมแพ้ โดนหักแต้ม -1 (ต่ำสุด 0)
       if (losingTeam) {
         losingTeam.forEach((player) => {
           const dbPlayer = players.find(p => p.id === player.id);
@@ -647,7 +650,6 @@ export default function BadmintonApp() {
 
       await update(ref(db, `badbeaow/players`), playersUpdates);
 
-      // ดึงคู่ถัดไป
       if (queue.length > 0) {
         const nextPairObj = queue[0];
         const nextPair = nextPairObj.pair;
@@ -785,7 +787,7 @@ export default function BadmintonApp() {
   return (
     <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200">
       
-      {/* Toast Notification with Jelly Bounce Animation */}
+      {/* Toast Notification */}
       <div className={`fixed top-6 left-1/2 z-50 transition-all duration-300 ease-out ${toast.message ? 'opacity-100 scale-100 animate-jelly' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
         <div className={`px-6 py-3.5 rounded-full shadow-lg font-semibold flex items-center gap-2.5 text-[13px] whitespace-nowrap text-white ${toast.type === 'error' ? 'bg-red-500 shadow-[0_8px_30px_rgb(239,68,68,0.3)]' : 'bg-emerald-500 shadow-[0_8px_30px_rgb(16,185,129,0.3)]'}`}>
           <div className="bg-white/20 rounded-full p-0.5">
@@ -870,7 +872,6 @@ export default function BadmintonApp() {
                       </button>
                     </div>
                   )}
-                  {/* ปุ่มเคลียร์สนาม ให้ทุกคนสามารถกดได้เสมอ */}
                   <div className="text-center pt-1">
                     <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white transition-colors">
                       เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
@@ -962,11 +963,10 @@ export default function BadmintonApp() {
               ) : (
                 <div className="space-y-3">
                   {queue.map((q, idx) => {
-                    // กำหนด Styling เวลาที่มีการลาก (Drag & Drop)
                     const isDragging = draggedQueueIdx === idx;
                     const isDragOver = dragOverQueueIdx === idx;
                     let dragClass = '';
-                    if (isDragging) dragClass = 'opacity-50 scale-95 shadow-inner bg-gray-50 border-purple-400';
+                    if (isDragging) dragClass = 'opacity-40 scale-95 shadow-inner bg-gray-50 border-purple-400';
                     else if (isDragOver && draggedQueueIdx !== null && draggedQueueIdx !== idx) {
                         dragClass = draggedQueueIdx < idx ? 'border-b-4 border-b-purple-500 transform -translate-y-1' : 'border-t-4 border-t-purple-500 transform translate-y-1';
                     }
@@ -976,19 +976,20 @@ export default function BadmintonApp() {
                         key={q.id} 
                         draggable={isAdmin}
                         onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragEnter={(e) => handleDragEnter(e, idx)}
                         onDragOver={(e) => handleDragOver(e, idx)}
                         onDrop={(e) => handleDrop(e, idx)}
                         onDragEnd={handleDragEnd}
-                        className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all duration-200 
+                        className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all duration-200 queue-item
                           ${q.id === highlightedQueueId ? 'queue-highlight ' : ''} 
                           ${q.isMoved ? 'bg-fuchsia-50 border-fuchsia-400' : 'bg-white border-gray-100 shadow-sm'}
-                          ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}
+                          ${isAdmin ? 'cursor-grab active:cursor-grabbing active:bg-gray-50' : ''}
                           ${dragClass}
                         `}
                       >
                         <div className="flex items-center gap-3">
                           {isAdmin && (
-                            <div className="text-gray-300 hover:text-gray-500" title="กดค้างแล้วลากเพื่อสลับคิว">
+                            <div className="text-gray-300 hover:text-gray-500" title="กดค้าง 0.1 วินาทีเพื่อลากสลับคิว">
                                 <GripVertical size={18} />
                             </div>
                           )}
@@ -1007,7 +1008,6 @@ export default function BadmintonApp() {
                           </div>
                         </div>
                         
-                        {/* ปุ่มลบคิวแสดงสำหรับทุกคน ส่วนการเลื่อนคิวยังคงเป็นของแอดมิน */}
                         <div className="flex items-center gap-1">
                           {isAdmin && (
                             <div className="flex flex-col gap-1 mr-2">
@@ -1132,7 +1132,6 @@ export default function BadmintonApp() {
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
                         
-                        {/* ปุ่มลบแสดงสำหรับทุกคน ส่วนปุ่มแก้ชื่อยังคงเป็นของแอดมิน */}
                         <div className="flex items-center gap-1 pl-1">
                             {isAdmin && (
                               <button onClick={() => handleEditPlayerClick(player)} disabled={isProcessing} className="text-blue-400 hover:text-blue-600 p-1.5 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg">
@@ -1164,7 +1163,6 @@ export default function BadmintonApp() {
           </div>
         )}
 
-        {/* แท็บจัดอันดับ Leaderboard */}
         {activeTab === 'leaderboard' && (
           <div className="p-4 space-y-5">
             <div className="bg-gradient-to-br from-purple-700 to-indigo-900 p-6 rounded-3xl shadow-lg text-white text-center relative overflow-hidden">
@@ -1469,7 +1467,7 @@ export default function BadmintonApp() {
         </div>
       )}
 
-      {/* Delete ALL Players Modal (อันตรายสุดๆ) */}
+      {/* Delete ALL Players Modal */}
       {showDeleteAllPlayersModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-2 border-red-500 animate-in zoom-in-95 duration-200">
