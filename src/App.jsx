@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -37,6 +37,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app, "https://badbeaow-default-rtdb.asia-southeast1.firebasedatabase.app");
 
+const getTodayKey = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Bangkok',
+}).format(new Date());
+
 export default function BadmintonApp() {
   const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [activeTab, setActiveTab] = useState('queue');
@@ -58,6 +62,7 @@ export default function BadmintonApp() {
   // Database State
   const [players, setPlayers] = useState([]);
   const [allCourtPlayers, setAllCourtPlayers] = useState({});
+  const [dashboardData, setDashboardData] = useState({});
   const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
 
@@ -73,6 +78,7 @@ export default function BadmintonApp() {
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
   const [adminUidInput, setAdminUidInput] = useState('');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   // Edit Player State
   const [playerToEdit, setPlayerToEdit] = useState(null);
@@ -86,6 +92,7 @@ export default function BadmintonApp() {
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
   const [leaderboardScope, setLeaderboardScope] = useState('court');
+  const [todayKey, setTodayKey] = useState(getTodayKey);
 
   const selectedCourt = COURTS.find(courtItem => courtItem.id === selectedCourtId);
   const getCourtRoot = (courtId = selectedCourtId) => courtId === 'court-1'
@@ -321,6 +328,15 @@ export default function BadmintonApp() {
   }, [selectedCourtId]);
 
   useEffect(() => {
+    const dateTimer = setInterval(() => {
+      const nextDateKey = getTodayKey();
+      setTodayKey(previousDateKey => previousDateKey === nextDateKey ? previousDateKey : nextDateKey);
+    }, 60000);
+
+    return () => clearInterval(dateTimer);
+  }, []);
+
+  useEffect(() => {
     const initAuth = async () => {
       try {
         if (!auth.currentUser) {
@@ -469,9 +485,26 @@ export default function BadmintonApp() {
     const unsubPlayers = onValue(playersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const loadedPlayers = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        const stalePresenceUpdates = {};
+        const loadedPlayers = Object.keys(data).map(key => {
+          const player = data[key];
+          const isFromToday = player.attendanceDate === todayKey;
+          if (!isFromToday) {
+            stalePresenceUpdates[`${key}/isPresent`] = false;
+            stalePresenceUpdates[`${key}/attendanceDate`] = todayKey;
+          }
+          return {
+            id: key,
+            ...player,
+            isPresent: isFromToday ? Boolean(player.isPresent) : false,
+            attendanceDate: todayKey,
+          };
+        });
         loadedPlayers.sort((a, b) => a.name.localeCompare(b.name));
         setPlayers(loadedPlayers);
+        if (Object.keys(stalePresenceUpdates).length > 0) {
+          update(playersRef, stalePresenceUpdates).catch(error => console.error('Attendance reset error:', error));
+        }
       } else {
         setPlayers([]);
       }
@@ -505,7 +538,7 @@ export default function BadmintonApp() {
       unsubQueue();
       unsubCourt();
     };
-  }, [user, selectedCourtId, courtRoot]);
+  }, [user, selectedCourtId, courtRoot, todayKey]);
 
   useEffect(() => {
     if (!user || activeTab !== 'leaderboard') return;
@@ -526,6 +559,33 @@ export default function BadmintonApp() {
 
     return () => unsubscribers.forEach(unsubscribe => unsubscribe());
   }, [user, activeTab]);
+
+  useEffect(() => {
+    if (!user || userRole !== 'superAdmin' || activeTab !== 'dashboard') return;
+
+    const unsubscribers = COURTS.flatMap((courtItem) => {
+      const root = getCourtRoot(courtItem.id);
+      const updateDashboard = (key, value) => {
+        setDashboardData(previous => ({
+          ...previous,
+          [courtItem.id]: { ...(previous[courtItem.id] || {}), [key]: value },
+        }));
+      };
+      const playersUnsubscribe = onValue(ref(db, `${root}/players`), (snapshot) => {
+        const data = snapshot.val() || {};
+        updateDashboard('players', Object.values(data));
+      });
+      const queueUnsubscribe = onValue(ref(db, `${root}/queue`), (snapshot) => {
+        updateDashboard('queueCount', snapshot.exists() ? Object.keys(snapshot.val()).length : 0);
+      });
+      const courtUnsubscribe = onValue(ref(db, `${root}/court`), (snapshot) => {
+        updateDashboard('court', snapshot.val() || { teamA: null, teamB: null });
+      });
+      return [playersUnsubscribe, queueUnsubscribe, courtUnsubscribe];
+    });
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [user, userRole, activeTab]);
 
   const presentPlayers = useMemo(() => players.filter(p => p.isPresent), [players]);
   
@@ -629,6 +689,31 @@ export default function BadmintonApp() {
 
   const leaderboardPlayers = leaderboardScope === 'all' ? rankedAllCourtPlayers : rankedPlayers;
 
+  const dashboardSummary = useMemo(() => {
+    const courtSummaries = COURTS.map((courtItem) => {
+      const data = dashboardData[courtItem.id] || {};
+      const playersInCourt = data.players || [];
+      const activeCourt = data.court || {};
+      const debtTotal = playersInCourt.reduce((total, player) => total + (Number(player.debt) || 0), 0);
+      return {
+        ...courtItem,
+        playerCount: playersInCourt.length,
+        presentCount: playersInCourt.filter(player => player.isPresent && player.attendanceDate === todayKey).length,
+        queueCount: data.queueCount || 0,
+        debtTotal,
+        isPlaying: Boolean(activeCourt.teamA || activeCourt.teamB),
+      };
+    });
+    return {
+      courts: courtSummaries,
+      playerCount: courtSummaries.reduce((total, courtItem) => total + courtItem.playerCount, 0),
+      presentCount: courtSummaries.reduce((total, courtItem) => total + courtItem.presentCount, 0),
+      queueCount: courtSummaries.reduce((total, courtItem) => total + courtItem.queueCount, 0),
+      debtTotal: courtSummaries.reduce((total, courtItem) => total + courtItem.debtTotal, 0),
+      playingCount: courtSummaries.filter(courtItem => courtItem.isPlaying).length,
+    };
+  }, [dashboardData, todayKey]);
+
   // --- Drag & Drop Handlers สำหรับจัดคิว ---
   const handleDragStart = (e, index) => {
     if (!isAdmin) {
@@ -717,7 +802,7 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const playersRef = ref(db, `${courtRoot}/players`);
-      await push(playersRef, { name: trimmedName, isPresent: true, debt: 0, wins: 0 });
+      await push(playersRef, { name: trimmedName, isPresent: true, attendanceDate: todayKey, debt: 0, wins: 0 });
       setNewPlayerName('');
       showToast('เพิ่มผู้เล่นสำเร็จ!', 'success');
     } catch (error) { console.error(error); }
@@ -828,7 +913,7 @@ export default function BadmintonApp() {
   const togglePresence = async (id, currentStatus) => {
     try {
       const playerRef = ref(db, `${courtRoot}/players/${id}`);
-      await update(playerRef, { isPresent: !currentStatus });
+      await update(playerRef, { isPresent: !currentStatus, attendanceDate: todayKey });
       if (currentStatus) setDraftPair(prev => prev.map(slotId => slotId === id ? null : slotId));
     } catch (error) { console.error(error); }
   };
@@ -1283,6 +1368,67 @@ export default function BadmintonApp() {
 
       {/* Main Content Area */}
       <main className="min-h-[calc(100vh-160px)]">
+        {activeTab === 'dashboard' && userRole === 'superAdmin' && (
+          <div className="p-4 space-y-5">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 rounded-3xl p-5 text-white shadow-xl">
+              <div className="flex items-center gap-2 mb-1">
+                <LayoutDashboard size={21} />
+                <h2 className="text-lg font-bold">Dashboard ภาพรวม</h2>
+              </div>
+              <p className="text-xs text-white/65">สรุปข้อมูลทุกคอร์ดแบบเรียลไทม์</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'ผู้เล่นทั้งหมด', value: dashboardSummary.playerCount, color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'มาเล่นวันนี้', value: dashboardSummary.presentCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'คู่รอสนาม', value: dashboardSummary.queueCount, color: 'text-amber-600', bg: 'bg-amber-50' },
+                { label: 'สนามกำลังแข่ง', value: dashboardSummary.playingCount, color: 'text-purple-600', bg: 'bg-purple-50' },
+              ].map((metric) => (
+                <div key={metric.label} className={`${metric.bg} rounded-2xl p-4 border border-white shadow-sm`}>
+                  <div className="text-[11px] text-gray-500 font-medium">{metric.label}</div>
+                  <div className={`text-2xl font-black mt-1 ${metric.color}`}>{metric.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-[15px] font-bold text-gray-800">สถานะแต่ละคอร์ด</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">ข้อมูลผู้เล่น คิว และสนาม</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] text-gray-400">ยอดค้างชำระรวม</div>
+                  <div className="text-sm font-black text-red-500">{dashboardSummary.debtTotal.toFixed(2)} ฿</div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {dashboardSummary.courts.map((courtItem) => (
+                  <button
+                    key={courtItem.id}
+                    onClick={() => { setSelectedCourtId(courtItem.id); setActiveTab('queue'); }}
+                    className="w-full text-left border border-gray-100 rounded-2xl p-4 hover:border-gray-300 hover:shadow-sm transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`font-bold ${courtItem.text}`}>{courtItem.name}</span>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${courtItem.isPlaying ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                        {courtItem.isPlaying ? 'กำลังแข่ง' : 'สนามว่าง'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      <div><div className="text-base font-black text-gray-800">{courtItem.playerCount}</div><div className="text-[9px] text-gray-400">ผู้เล่น</div></div>
+                      <div><div className="text-base font-black text-emerald-600">{courtItem.presentCount}</div><div className="text-[9px] text-gray-400">มาวันนี้</div></div>
+                      <div><div className="text-base font-black text-amber-600">{courtItem.queueCount}</div><div className="text-[9px] text-gray-400">คู่รอ</div></div>
+                      <div><div className="text-base font-black text-red-500">{courtItem.debtTotal.toFixed(0)}</div><div className="text-[9px] text-gray-400">หนี้ ฿</div></div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'queue' && (
           <div className="p-4 space-y-6">
             
@@ -1887,13 +2033,30 @@ export default function BadmintonApp() {
           </button>
 
           {userRole === 'superAdmin' && (
-            <button onClick={() => setActiveTab('admins')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'admins' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
-              <ShieldCheck size={22} className={activeTab === 'admins' ? 'drop-shadow-sm' : ''} />
-              <span className="text-[10px]">ผู้ดูแล</span>
+            <button onClick={() => setShowMoreMenu(previous => !previous)} className={`flex flex-col items-center gap-1 flex-1 ${showMoreMenu || activeTab === 'dashboard' || activeTab === 'admins' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+              <MoreHorizontal size={22} />
+              <span className="text-[10px]">เพิ่มเติม</span>
             </button>
           )}
         </div>
       </nav>
+
+      {showMoreMenu && userRole === 'superAdmin' && (
+        <div className="fixed bottom-[74px] right-3 z-40 w-44 bg-white rounded-2xl border border-gray-100 shadow-xl p-2">
+          <button
+            onClick={() => { setActiveTab('dashboard'); setShowMoreMenu(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold ${activeTab === 'dashboard' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <LayoutDashboard size={18} /> ภาพรวม
+          </button>
+          <button
+            onClick={() => { setActiveTab('admins'); setShowMoreMenu(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold ${activeTab === 'admins' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <ShieldCheck size={18} /> ผู้ดูแล
+          </button>
+        </div>
+      )}
 
       {/* Admin Login Modal */}
       {showLoginModal && (
