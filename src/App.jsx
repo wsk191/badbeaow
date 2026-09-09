@@ -347,7 +347,6 @@ export default function BadmintonApp() {
   };
 
   const handleDeletePlayerClick = (player) => {
-    if (!isAdmin) return;
     if ((player.debt || 0) > 0) {
       showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
       return;
@@ -498,7 +497,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete || !isAdmin) return;
+    if (!queueToDelete) return; // ลบเช็ค isAdmin ออก ทุกคนสามารถลบได้
     setIsProcessing(true);
     try {
       await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
@@ -781,7 +780,7 @@ export default function BadmintonApp() {
                       </button>
                     </div>
                   )}
-                  {/* ปุ่มเคลียร์สนาม ให้ทุกคนสามารถกดได้เสมอ ไม่โดนซ่อนด้วย isAdmin */}
+                  {/* ปุ่มเคลียร์สนาม ให้ทุกคนสามารถกดได้เสมอ */}
                   <div className="text-center pt-1">
                     <button onClick={handleClearCourt} disabled={isProcessing} className="text-[11px] text-white/50 hover:text-white transition-colors">
                       เคลียร์สนาม (ส่งผู้เล่นกลับคิวรอ)
@@ -890,8 +889,9 @@ export default function BadmintonApp() {
                         </div>
                       </div>
                       
-                      {isAdmin && (
-                        <div className="flex items-center gap-1">
+                      {/* แก้ไขให้ปุ่มลบคิวแสดงสำหรับทุกคน ส่วนการเลื่อนคิวยังคงเป็นของแอดมิน */}
+                      <div className="flex items-center gap-1">
+                        {isAdmin && (
                           <div className="flex flex-col gap-1 mr-2">
                             <button onClick={() => handleMoveQueue(idx, 'up')} disabled={idx === 0 || isProcessing} className="p-1 text-gray-400 hover:text-purple-600 disabled:opacity-30 transition-colors">
                               <ArrowUp size={16} />
@@ -900,11 +900,11 @@ export default function BadmintonApp() {
                               <ArrowDown size={16} />
                             </button>
                           </div>
-                          <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      )}
+                        )}
+                        <button onClick={() => setQueueToDelete(q.id)} disabled={isProcessing} className="p-2 text-red-400 hover:text-red-600 transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
 
                     </div>
                   ))}
@@ -1013,16 +1013,18 @@ export default function BadmintonApp() {
                         >
                           <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${player.isPresent ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
-                        {isAdmin && (
-                          <div className="flex items-center gap-1 pl-1">
+                        
+                        {/* แก้ไขให้ปุ่มลบแสดงสำหรับทุกคน ส่วนปุ่มแก้ชื่อยังคงเป็นของแอดมิน */}
+                        <div className="flex items-center gap-1 pl-1">
+                            {isAdmin && (
                               <button onClick={() => handleEditPlayerClick(player)} disabled={isProcessing} className="text-blue-400 hover:text-blue-600 p-1.5 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg">
                                 <Edit2 size={15} />
                               </button>
-                              <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1.5 transition-colors bg-red-50 hover:bg-red-100 rounded-lg">
-                                <Trash2 size={15} />
-                              </button>
-                          </div>
-                        )}
+                            )}
+                            <button onClick={() => handleDeletePlayerClick(player)} disabled={isProcessing} className="text-red-400 hover:text-red-600 p-1.5 transition-colors bg-red-50 hover:bg-red-100 rounded-lg">
+                              <Trash2 size={15} />
+                            </button>
+                        </div>
                       </div>
                     </div>
                   ))
