@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { 
-    Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, Swords,
+    Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
     X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical
 } from 'lucide-react';
@@ -13,6 +13,13 @@ import {
     onAuthStateChanged 
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, update, remove, set } from 'firebase/database';
+
+const COURTS = [
+  { id: 'court-1', name: 'คอร์ด 1', accent: 'from-violet-700 to-indigo-900', solid: 'bg-violet-600', text: 'text-violet-600' },
+  { id: 'court-2', name: 'คอร์ด 2', accent: 'from-amber-500 to-orange-700', solid: 'bg-amber-600', text: 'text-amber-600' },
+  { id: 'court-3', name: 'คอร์ด 3', accent: 'from-emerald-600 to-teal-900', solid: 'bg-emerald-600', text: 'text-emerald-600' },
+  { id: 'court-4', name: 'คอร์ด 4', accent: 'from-sky-600 to-blue-900', solid: 'bg-sky-600', text: 'text-sky-600' },
+];
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -31,6 +38,7 @@ const auth = getAuth(app);
 const db = getDatabase(app, "https://badbeaow-default-rtdb.asia-southeast1.firebasedatabase.app");
 
 export default function BadmintonApp() {
+  const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [activeTab, setActiveTab] = useState('queue');
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -46,6 +54,7 @@ export default function BadmintonApp() {
 
   // Database State
   const [players, setPlayers] = useState([]);
+  const [allCourtPlayers, setAllCourtPlayers] = useState({});
   const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
 
@@ -72,6 +81,13 @@ export default function BadmintonApp() {
   // Search State
   const [searchPlayerQuery, setSearchPlayerQuery] = useState('');
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
+  const [leaderboardScope, setLeaderboardScope] = useState('court');
+
+  const selectedCourt = COURTS.find(courtItem => courtItem.id === selectedCourtId);
+  const getCourtRoot = (courtId = selectedCourtId) => courtId === 'court-1'
+    ? 'badbeaow'
+    : `badbeaow/courts/${courtId}`;
+  const courtRoot = getCourtRoot();
 
   // ฟังก์ชันคำนวณระดับพลังจากจำนวนรอบที่ชนะ
   const getPowerLevel = (wins = 0) => {
@@ -116,6 +132,8 @@ export default function BadmintonApp() {
         justify-content: center;
         align-items: center;
         white-space: nowrap;
+        -webkit-text-stroke: 1px rgba(255, 255, 255, 0.45);
+        paint-order: stroke fill;
       }
       @keyframes splash-letter {
         0% { opacity: 0; color: #ffffff; transform: translateZ(260px) scale(2.2); text-shadow: none; }
@@ -208,6 +226,45 @@ export default function BadmintonApp() {
       .drag-handle {
           touch-action: none; /* ห้ามหน้าจอขยับเวลาแตะลากตรงไอคอนนี้ */
       }
+      .court-theme-court-2 .text-purple-600 { color: #b45309 !important; }
+      .court-theme-court-2 .text-purple-700 { color: #92400e !important; }
+      .court-theme-court-2 .text-purple-500 { color: #d97706 !important; }
+      .court-theme-court-2 .text-purple-300 { color: #fed7aa !important; }
+      .court-theme-court-2 .bg-purple-50 { background-color: #fffbeb !important; }
+      .court-theme-court-2 .bg-purple-100 { background-color: #fef3c7 !important; }
+      .court-theme-court-2 .bg-purple-500 { background-color: #d97706 !important; }
+      .court-theme-court-2 .bg-purple-600 { background-color: #d97706 !important; }
+      .court-theme-court-2 .bg-purple-700 { background-color: #b45309 !important; }
+      .court-theme-court-2 .hover\:bg-purple-700:hover { background-color: #b45309 !important; }
+      .court-theme-court-2 .border-purple-100 { border-color: #fde68a !important; }
+      .court-theme-court-2 .border-purple-200 { border-color: #fcd34d !important; }
+      .court-theme-court-2 .border-purple-500 { border-color: #d97706 !important; }
+      .court-theme-court-3 .text-purple-600 { color: #047857 !important; }
+      .court-theme-court-3 .text-purple-700 { color: #065f46 !important; }
+      .court-theme-court-3 .text-purple-500 { color: #059669 !important; }
+      .court-theme-court-3 .text-purple-300 { color: #a7f3d0 !important; }
+      .court-theme-court-3 .bg-purple-50 { background-color: #ecfdf5 !important; }
+      .court-theme-court-3 .bg-purple-100 { background-color: #d1fae5 !important; }
+      .court-theme-court-3 .bg-purple-500 { background-color: #059669 !important; }
+      .court-theme-court-3 .bg-purple-600 { background-color: #059669 !important; }
+      .court-theme-court-3 .bg-purple-700 { background-color: #047857 !important; }
+      .court-theme-court-3 .hover\:bg-purple-700:hover { background-color: #047857 !important; }
+      .court-theme-court-3 .border-purple-100 { border-color: #a7f3d0 !important; }
+      .court-theme-court-3 .border-purple-200 { border-color: #6ee7b7 !important; }
+      .court-theme-court-3 .border-purple-500 { border-color: #059669 !important; }
+      .court-theme-court-4 .text-purple-600 { color: #0369a1 !important; }
+      .court-theme-court-4 .text-purple-700 { color: #075985 !important; }
+      .court-theme-court-4 .text-purple-500 { color: #0284c7 !important; }
+      .court-theme-court-4 .text-purple-300 { color: #bae6fd !important; }
+      .court-theme-court-4 .bg-purple-50 { background-color: #f0f9ff !important; }
+      .court-theme-court-4 .bg-purple-100 { background-color: #e0f2fe !important; }
+      .court-theme-court-4 .bg-purple-500 { background-color: #0284c7 !important; }
+      .court-theme-court-4 .bg-purple-600 { background-color: #0284c7 !important; }
+      .court-theme-court-4 .bg-purple-700 { background-color: #0369a1 !important; }
+      .court-theme-court-4 .hover\:bg-purple-700:hover { background-color: #0369a1 !important; }
+      .court-theme-court-4 .border-purple-100 { border-color: #bae6fd !important; }
+      .court-theme-court-4 .border-purple-200 { border-color: #7dd3fc !important; }
+      .court-theme-court-4 .border-purple-500 { border-color: #0284c7 !important; }
     `;
     document.head.appendChild(style);
 
@@ -247,14 +304,17 @@ export default function BadmintonApp() {
 
   // Auth & Realtime Sync
   useEffect(() => {
-    const exitTimer = setTimeout(() => setSplashExiting(true), 3500);
-    const splashTimer = setTimeout(() => setSplashComplete(true), 4000);
+    setSplashComplete(false);
+    setSplashExiting(false);
+    const splashDuration = selectedCourtId ? 3000 : 4000;
+    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 500);
+    const splashTimer = setTimeout(() => setSplashComplete(true), splashDuration);
 
     return () => {
       clearTimeout(exitTimer);
       clearTimeout(splashTimer);
     };
-  }, []);
+  }, [selectedCourtId]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -310,9 +370,9 @@ export default function BadmintonApp() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !selectedCourtId) return;
 
-    const playersRef = ref(db, 'badbeaow/players');
+    const playersRef = ref(db, `${courtRoot}/players`);
     const unsubPlayers = onValue(playersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -325,7 +385,7 @@ export default function BadmintonApp() {
       setLoading(false);
     });
 
-    const queueRef = ref(db, 'badbeaow/queue');
+    const queueRef = ref(db, `${courtRoot}/queue`);
     const unsubQueue = onValue(queueRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -337,7 +397,7 @@ export default function BadmintonApp() {
       }
     });
 
-    const courtRef = ref(db, 'badbeaow/court');
+    const courtRef = ref(db, `${courtRoot}/court`);
     const unsubCourt = onValue(courtRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -352,7 +412,27 @@ export default function BadmintonApp() {
       unsubQueue();
       unsubCourt();
     };
-  }, [user]);
+  }, [user, selectedCourtId, courtRoot]);
+
+  useEffect(() => {
+    if (!user || activeTab !== 'leaderboard') return;
+
+    const unsubscribers = COURTS.map(courtItem => {
+      const playersRef = ref(db, `${getCourtRoot(courtItem.id)}/players`);
+      return onValue(playersRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        const loadedPlayers = Object.keys(data).map(key => ({
+          id: key,
+          ...data[key],
+          courtId: courtItem.id,
+          courtName: courtItem.name,
+        }));
+        setAllCourtPlayers(previous => ({ ...previous, [courtItem.id]: loadedPlayers }));
+      });
+    });
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [user, activeTab]);
 
   const presentPlayers = useMemo(() => players.filter(p => p.isPresent), [players]);
   
@@ -388,9 +468,41 @@ export default function BadmintonApp() {
 
   const getPlayerName = (id) => players.find(p => p.id === id)?.name || '';
 
+  const selectCourt = (courtId) => {
+    setSelectedCourtId(courtId);
+    setActiveTab('queue');
+    setPlayers([]);
+    setQueue([]);
+    setCourt({ teamA: null, teamB: null });
+    setDraftPair([null, null]);
+    setAllCourtPlayers({});
+  };
+
   const rankedPlayers = useMemo(() => {
     return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0));
   }, [players]);
+
+  const rankedAllCourtPlayers = useMemo(() => {
+    const combinedPlayers = new Map();
+    Object.values(allCourtPlayers).flat().forEach(player => {
+      const playerKey = player.name.trim().toLowerCase();
+      const existingPlayer = combinedPlayers.get(playerKey);
+      if (existingPlayer) {
+        existingPlayer.wins += player.wins || 0;
+        existingPlayer.courts.push(player.courtName);
+      } else {
+        combinedPlayers.set(playerKey, {
+          ...player,
+          id: `all-${playerKey}`,
+          wins: player.wins || 0,
+          courts: [player.courtName],
+        });
+      }
+    });
+    return [...combinedPlayers.values()].sort((a, b) => b.wins - a.wins);
+  }, [allCourtPlayers]);
+
+  const leaderboardPlayers = leaderboardScope === 'all' ? rankedAllCourtPlayers : rankedPlayers;
 
   // --- Drag & Drop Handlers สำหรับจัดคิว ---
   const handleDragStart = (e, index) => {
@@ -455,7 +567,7 @@ export default function BadmintonApp() {
         }
       });
 
-      await update(ref(db, 'badbeaow/queue'), updates);
+      await update(ref(db, `${courtRoot}/queue`), updates);
       
       setHighlightedQueueId(draggedItem.id);
       setTimeout(() => setHighlightedQueueId(null), 3000);
@@ -479,7 +591,7 @@ export default function BadmintonApp() {
 
     setIsProcessing(true);
     try {
-      const playersRef = ref(db, 'badbeaow/players');
+      const playersRef = ref(db, `${courtRoot}/players`);
       await push(playersRef, { name: trimmedName, isPresent: true, debt: 0, wins: 0 });
       setNewPlayerName('');
       showToast('เพิ่มผู้เล่นสำเร็จ!', 'success');
@@ -506,7 +618,7 @@ export default function BadmintonApp() {
 
     setIsProcessing(true);
     try {
-      await update(ref(db, `badbeaow/players/${playerToEdit.id}`), { name: trimmedName });
+      await update(ref(db, `${courtRoot}/players/${playerToEdit.id}`), { name: trimmedName });
 
       const queueUpdates = {};
       queue.forEach(q => {
@@ -518,7 +630,7 @@ export default function BadmintonApp() {
           }
       });
       if (Object.keys(queueUpdates).length > 0) {
-          await update(ref(db, 'badbeaow/queue'), queueUpdates);
+          await update(ref(db, `${courtRoot}/queue`), queueUpdates);
       }
 
       const courtUpdates = {};
@@ -531,7 +643,7 @@ export default function BadmintonApp() {
           if (pIndex !== -1) courtUpdates[`teamB/${pIndex}/name`] = trimmedName;
       }
       if (Object.keys(courtUpdates).length > 0) {
-          await update(ref(db, 'badbeaow/court'), courtUpdates);
+          await update(ref(db, `${courtRoot}/court`), courtUpdates);
       }
 
       setPlayerToEdit(null);
@@ -555,7 +667,7 @@ export default function BadmintonApp() {
     if (!playerToDelete) return;
     setIsProcessing(true);
     try {
-      await remove(ref(db, `badbeaow/players/${playerToDelete}`));
+      await remove(ref(db, `${courtRoot}/players/${playerToDelete}`));
       setPlayerToDelete(null);
       showToast('ลบผู้เล่นออกแล้ว', 'success');
     } catch (error) { console.error(error); }
@@ -575,9 +687,9 @@ export default function BadmintonApp() {
   const confirmDeleteAllPlayers = async () => {
       setIsProcessing(true);
       try {
-          await set(ref(db, 'badbeaow/players'), null);
-          await set(ref(db, 'badbeaow/queue'), null);
-          await set(ref(db, 'badbeaow/court'), { teamA: null, teamB: null });
+          await set(ref(db, `${courtRoot}/players`), null);
+          await set(ref(db, `${courtRoot}/queue`), null);
+          await set(ref(db, `${courtRoot}/court`), { teamA: null, teamB: null });
           setShowDeleteAllPlayersModal(false);
           showToast('ลบข้อมูลผู้เล่น คิว และสนามทั้งหมดเรียบร้อยแล้ว!', 'success');
       } catch (error) {
@@ -589,7 +701,7 @@ export default function BadmintonApp() {
 
   const togglePresence = async (id, currentStatus) => {
     try {
-      const playerRef = ref(db, `badbeaow/players/${id}`);
+      const playerRef = ref(db, `${courtRoot}/players/${id}`);
       await update(playerRef, { isPresent: !currentStatus });
       if (currentStatus) setDraftPair(prev => prev.map(slotId => slotId === id ? null : slotId));
     } catch (error) { console.error(error); }
@@ -656,7 +768,7 @@ export default function BadmintonApp() {
       });
 
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-      const queueRef = ref(db, 'badbeaow/queue');
+      const queueRef = ref(db, `${courtRoot}/queue`);
       
       await push(queueRef, { pair: pairData, sortOrder: maxOrder + 100 });
       setDraftPair([null, null]);
@@ -676,12 +788,12 @@ export default function BadmintonApp() {
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       const targetItem = queue[targetIndex];
 
-      await update(ref(db, `badbeaow/queue/${currentItem.id}`), { 
+      await update(ref(db, `${courtRoot}/queue/${currentItem.id}`), {
         sortOrder: targetItem.sortOrder,
         isMoved: true,
         moveDirection: direction
       });
-      await update(ref(db, `badbeaow/queue/${targetItem.id}`), { 
+      await update(ref(db, `${courtRoot}/queue/${targetItem.id}`), {
         sortOrder: currentItem.sortOrder,
         isMoved: true,
         moveDirection: direction === 'up' ? 'down' : 'up'
@@ -697,7 +809,7 @@ export default function BadmintonApp() {
     if (!queueToDelete) return; 
     setIsProcessing(true);
     try {
-      await remove(ref(db, `badbeaow/queue/${queueToDelete}`));
+      await remove(ref(db, `${courtRoot}/queue/${queueToDelete}`));
       setQueueToDelete(null);
       showToast('ลบคิวออกแล้ว', 'success');
     } catch (error) { console.error(error); }
@@ -708,10 +820,10 @@ export default function BadmintonApp() {
     if (queue.length < 2) return;
     setIsProcessing(true);
     try {
-      const courtRef = ref(db, 'badbeaow/court');
+      const courtRef = ref(db, `${courtRoot}/court`);
       await set(courtRef, { teamA: queue[0].pair, teamB: queue[1].pair });
-      await remove(ref(db, `badbeaow/queue/${queue[0].id}`));
-      await remove(ref(db, `badbeaow/queue/${queue[1].id}`));
+      await remove(ref(db, `${courtRoot}/queue/${queue[0].id}`));
+      await remove(ref(db, `${courtRoot}/queue/${queue[1].id}`));
       showToast('เริ่มการแข่งขันแล้ว!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -745,21 +857,21 @@ export default function BadmintonApp() {
         });
         
         const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-        const queueRef = ref(db, 'badbeaow/queue');
+        const queueRef = ref(db, `${courtRoot}/queue`);
         await push(queueRef, { pair: losingTeam, sortOrder: maxOrder + 100 });
       }
 
-      await update(ref(db, `badbeaow/players`), playersUpdates);
+      await update(ref(db, `${courtRoot}/players`), playersUpdates);
 
       if (queue.length > 0) {
         const nextPairObj = queue[0];
         const nextPair = nextPairObj.pair;
         if (winnerTeam === 'A') nextTeamB = nextPair;
         if (winnerTeam === 'B') nextTeamA = nextPair;
-        await remove(ref(db, `badbeaow/queue/${nextPairObj.id}`));
+        await remove(ref(db, `${courtRoot}/queue/${nextPairObj.id}`));
       }
       
-      await set(ref(db, 'badbeaow/court'), { teamA: nextTeamA, teamB: nextTeamB });
+      await set(ref(db, `${courtRoot}/court`), { teamA: nextTeamA, teamB: nextTeamB });
       showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -768,7 +880,7 @@ export default function BadmintonApp() {
   const handleClearCourt = async () => {
     setIsProcessing(true);
     try {
-      const queueRef = ref(db, 'badbeaow/queue');
+      const queueRef = ref(db, `${courtRoot}/queue`);
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
       
       let currentMaxOrder = maxOrder;
@@ -781,7 +893,7 @@ export default function BadmintonApp() {
         await push(queueRef, { pair: court.teamB, sortOrder: currentMaxOrder });
       }
 
-      const courtRef = ref(db, 'badbeaow/court');
+      const courtRef = ref(db, `${courtRoot}/court`);
       await set(courtRef, { teamA: null, teamB: null });
       setCourt({ teamA: null, teamB: null });
       
@@ -799,7 +911,7 @@ export default function BadmintonApp() {
       const player = players.find(p => p.id === playerId);
       if (!player) return;
       
-      const playerRef = ref(db, `badbeaow/players/${playerId}`);
+      const playerRef = ref(db, `${courtRoot}/players/${playerId}`);
       await update(playerRef, { debt: (player.debt || 0) + amount });
       showToast(`บวกค่าบำรุง ${amount} บาทให้ ${player.name} แล้ว`, 'success');
     } catch (error) { console.error(error); }
@@ -812,7 +924,7 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const promises = presentPlayers.map(p => {
-        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        const playerRef = ref(db, `${courtRoot}/players/${p.id}`);
         return update(playerRef, { debt: (p.debt || 0) + 10 });
       });
       await Promise.all(promises);
@@ -829,7 +941,7 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       await Promise.all(presentPlayers.map(p => {
-        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        const playerRef = ref(db, `${courtRoot}/players/${p.id}`);
         return update(playerRef, { debt: (p.debt || 0) + perPerson });
       }));
       setTotalCourtBill('');
@@ -848,7 +960,7 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const newDebt = Math.max(0, (player.debt || 0) - payAmount);
-      const playerRef = ref(db, `badbeaow/players/${playerId}`);
+      const playerRef = ref(db, `${courtRoot}/players/${playerId}`);
       await update(playerRef, { debt: newDebt });
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
       showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!', 'success');
@@ -867,7 +979,7 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       const promises = playersWithDebt.map(p => {
-        const playerRef = ref(db, `badbeaow/players/${p.id}`);
+        const playerRef = ref(db, `${courtRoot}/players/${p.id}`);
         return update(playerRef, { debt: 0 });
       });
       await Promise.all(promises);
@@ -881,11 +993,66 @@ export default function BadmintonApp() {
 
   const showSplash = loading || !splashComplete;
 
+  if (!selectedCourtId) {
+    return (
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50 text-gray-800 max-w-md mx-auto px-5 py-10 relative overflow-hidden">
+        {showSplash && (
+          <div
+            className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
+          >
+            <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
+            <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+            <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+              <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
+                {'BADBEAOW'.split('').map((letter, index) => (
+                  <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+                ))}
+              </h1>
+              <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+              <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                กำลังเตรียมระบบ...
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="text-center pt-8 pb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-lg mb-5">
+            <Swords size={30} />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">BADBEAOW</h1>
+          <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>
+        </div>
+
+        <div className="space-y-3">
+          {COURTS.map(courtItem => (
+            <button
+              key={courtItem.id}
+              onClick={() => selectCourt(courtItem.id)}
+              className={`w-full bg-gradient-to-r ${courtItem.accent} text-white rounded-2xl p-5 flex items-center justify-between shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all text-left`}
+            >
+              <span>
+                <span className="block text-lg font-bold">{courtItem.name}</span>
+                <span className="block text-xs text-white/75 mt-1">เข้าสู่ระบบจัดการคิว</span>
+              </span>
+              <ArrowLeft size={20} className="rotate-180" />
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-8 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm text-center text-xs text-gray-500">
+          ข้อมูลคิว ผู้เล่น และการเงินจะแยกตามคอร์ดที่เลือก
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200">
+    <div style={{ fontFamily: "'Prompt', sans-serif" }} className={`court-theme-${selectedCourtId} min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200`}>
       {showSplash && (
         <div
-          className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
+          className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br ${selectedCourt.accent} flex items-center justify-center px-6 text-white overflow-hidden`}
         >
           <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
           <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
@@ -916,9 +1083,15 @@ export default function BadmintonApp() {
 
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md text-gray-800 pt-10 pb-3 px-6 sticky top-0 z-20 border-b border-gray-100 flex justify-between items-center">
-        <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-          BADBEAOW
-        </h1>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setSelectedCourtId(null)} className="p-1.5 -ml-2 text-gray-400 hover:text-purple-600 transition-colors" title="กลับไปเลือกคอร์ด">
+            <ArrowLeft size={19} />
+          </button>
+          <div>
+            <h1 className={`text-lg font-bold tracking-tight ${selectedCourt.text}`}>BADBEAOW</h1>
+            <div className="text-[10px] text-gray-400 font-medium">{selectedCourt.name}</div>
+          </div>
+        </div>
         <div>
           {isAdmin ? (
             <button 
@@ -944,7 +1117,7 @@ export default function BadmintonApp() {
           <div className="p-4 space-y-6">
             
             {/* Active Court Widget */}
-            <div className="bg-gradient-to-br from-purple-700 to-indigo-900 rounded-3xl p-5 shadow-xl relative overflow-hidden text-white">
+            <div className={`bg-gradient-to-br ${selectedCourt.accent} rounded-3xl p-5 shadow-xl relative overflow-hidden text-white`}>
               <div className="flex justify-between items-center mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Swords size={20} className="text-purple-300" /> สนามกำลังแข่ง
@@ -1283,7 +1456,7 @@ export default function BadmintonApp() {
         {/* แท็บจัดอันดับ Leaderboard */}
         {activeTab === 'leaderboard' && (
           <div className="p-4 space-y-5">
-            <div className="bg-gradient-to-br from-purple-700 to-indigo-900 p-6 rounded-3xl shadow-lg text-white text-center relative overflow-hidden">
+            <div className={`bg-gradient-to-br ${selectedCourt.accent} p-6 rounded-3xl shadow-lg text-white text-center relative overflow-hidden`}>
               <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
                 <Trophy size={100} />
               </div>
@@ -1292,12 +1465,27 @@ export default function BadmintonApp() {
               <p className="text-purple-200 text-[12px] font-medium">ใครชนะบ่อย ค่าพลังยิ่งสูง อันดับยิ่งแรง!</p>
             </div>
 
+            <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 flex gap-1">
+              <button
+                onClick={() => setLeaderboardScope('court')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${leaderboardScope === 'court' ? `${selectedCourt.solid} text-white shadow-sm` : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                {selectedCourt.name}
+              </button>
+              <button
+                onClick={() => setLeaderboardScope('all')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${leaderboardScope === 'all' ? `${selectedCourt.solid} text-white shadow-sm` : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                รวม 4 คอร์ด
+              </button>
+            </div>
+
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="divide-y divide-gray-50">
-                {rankedPlayers.length === 0 ? (
+                {leaderboardPlayers.length === 0 ? (
                   <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีข้อมูลผู้เล่น</div>
                 ) : (
-                  rankedPlayers.map((player, index) => {
+                  leaderboardPlayers.map((player, index) => {
                     const currentRank = index + 1;
                     const prevRank = player.previousRank || currentRank;
                     const rankDiff = prevRank - currentRank; 
@@ -1341,6 +1529,9 @@ export default function BadmintonApp() {
                               {currentRank === 1 && <span className="text-[10px]">👑</span>}
                             </div>
                             <div className="text-[11px] text-gray-500 mt-0.5">ชนะทั้งหมด {player.wins || 0} แมตช์</div>
+                            {leaderboardScope === 'all' && (
+                              <div className="text-[10px] text-purple-500 mt-0.5">{player.courts.join(' · ')}</div>
+                            )}
                           </div>
                         </div>
                         <div>
