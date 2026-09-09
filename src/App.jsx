@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
-    Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, 
+    Users, Wallet, ArrowUp, ArrowDown, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    Swords, X, Receipt, Check, Lock, Unlock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
