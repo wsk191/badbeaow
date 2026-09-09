@@ -110,32 +110,72 @@ export default function BadmintonApp() {
         70% { transform: translate(-50%, -3px) scale(0.97); }
         100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
       }
-      @keyframes splash-letter {
-        0% { opacity: 0; color: #ffffff; transform: translateZ(420px) scale(2.8); text-shadow: none; }
-        62% { opacity: 1; color: #ffffff; transform: translateZ(45px) scale(1.08); text-shadow: 0 0 18px rgba(255, 255, 255, 0.95); }
-        82% { color: #fb7185; transform: translateZ(-8px) scale(0.98); text-shadow: 0 0 12px rgba(251, 113, 133, 0.7); }
-        100% { opacity: 1; color: #ff4d35; transform: translateZ(0) scale(1); text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
-      }
       .splash-title {
-        perspective: 800px;
-        transform-style: preserve-3d;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        white-space: nowrap;
       }
+      @keyframes splash-letter {
+        0% { opacity: 0; color: #ffffff; transform: translateZ(260px) scale(2.2); text-shadow: none; }
+        60% { opacity: 1; color: #ffffff; transform: translateZ(20px) scale(1.05); text-shadow: 0 0 16px rgba(255, 255, 255, 0.9); }
+        68% { opacity: 1; color: #ff9f43; transform: translateZ(0) scale(1); text-shadow: 0 0 10px rgba(255, 159, 67, 0.55); }
+        88% { opacity: 1; color: #ff9f43; transform: translateZ(0) scale(1); text-shadow: 0 0 10px rgba(255, 159, 67, 0.55); }
+        100% { opacity: 1; color: #ef3f35; transform: translateZ(0) scale(1); text-shadow: 0 0 8px rgba(239, 63, 53, 0.45); }
+      }
+      @keyframes splash-a-flicker {
+        0%, 7%, 15%, 22%, 39%, 47%, 64%, 72%, 100% { text-shadow: 0 0 9px rgba(239, 63, 53, 0.7), 0 0 22px rgba(239, 63, 53, 0.4); opacity: 1; }
+        8%, 14%, 23%, 38%, 48%, 63%, 73%, 78% { text-shadow: none; opacity: 0.55; }
+        79%, 86% { text-shadow: 0 0 14px rgba(255, 125, 72, 0.95), 0 0 32px rgba(239, 63, 53, 0.75); opacity: 1; }
+      }
+      .splash-letter {
+        display: inline-block;
+        transform-origin: center;
+        animation: splash-letter 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      .splash-a-glow {
+        animation: splash-letter 1.1s cubic-bezier(0.16, 1, 0.3, 1) both, splash-a-flicker 1.8s steps(1, end) 0.9s infinite;
+      }
+      .splash-letter:nth-child(1) { animation-delay: 0s; }
+      .splash-letter:nth-child(2) { animation-delay: 0.13s; }
+      .splash-letter:nth-child(3) { animation-delay: 0.26s; }
+      .splash-letter:nth-child(4) { animation-delay: 0.39s; }
+      .splash-letter:nth-child(5) { animation-delay: 0.52s; }
+      .splash-letter:nth-child(6) { animation-delay: 0.65s; }
+      .splash-letter:nth-child(7) { animation-delay: 0.78s; }
+      .splash-letter:nth-child(8) { animation-delay: 0.91s; }
       @keyframes splash-screen-exit {
         0%, 65% { opacity: 1; }
         100% { opacity: 0; }
+      }
+      @keyframes splash-o-impact {
+        0%, 100% { transform: scale(1) rotate(0); }
+        18% { transform: scale(1.12) rotate(-7deg); }
+        38% { transform: scale(0.88) rotate(6deg); }
+        62% { transform: scale(1.05) rotate(-3deg); }
+        82% { transform: scale(0.96) rotate(2deg); }
+      }
+      .splash-o-impact {
+        position: relative;
+        z-index: 3;
+        animation: splash-o-impact 0.55s ease-out both;
+      }
+      .splash-o-impact::after {
+        content: '';
+        position: absolute;
+        top: -8%;
+        left: 48%;
+        width: 2px;
+        height: 116%;
+        background: rgba(255, 255, 255, 0.9);
+        transform: rotate(24deg);
+        box-shadow: 5px 16px 0 -0.5px rgba(255, 255, 255, 0.8);
       }
       @keyframes splash-light-flash {
         0%, 42% { opacity: 0; }
         62% { opacity: 0.95; }
         100% { opacity: 0; }
-      }
-      @keyframes splash-o-zoom {
-        0% { color: #ff4d35; transform: translateZ(0) scale(1); text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
-        100% { color: #ffffff; transform: translateZ(80px) scale(14); text-shadow: 0 0 35px rgba(255, 255, 255, 0.95); }
-      }
-      @keyframes splash-word-zoom {
-        0% { transform: scale(1); color: #ff4d35; text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
-        100% { transform: scale(7); color: #ffffff; text-shadow: 0 0 35px rgba(255, 255, 255, 0.95); }
       }
       .splash-screen-exiting {
         animation: splash-screen-exit 0.5s ease-in forwards;
@@ -146,28 +186,13 @@ export default function BadmintonApp() {
         inset: 0;
         z-index: 1;
         pointer-events: none;
-        background: #ffffff;
+        background: #ff684f;
         animation: splash-light-flash 0.5s ease-out forwards;
       }
       .splash-screen-exiting .splash-title {
         position: relative;
         z-index: 2;
-        transform-origin: center center;
-        animation: splash-word-zoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
-      .splash-letter {
-        display: inline-block;
-        transform-origin: center;
-        animation: splash-letter 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
-      }
-      .splash-letter:nth-child(1) { animation-delay: 0s; }
-      .splash-letter:nth-child(2) { animation-delay: 0.13s; }
-      .splash-letter:nth-child(3) { animation-delay: 0.26s; }
-      .splash-letter:nth-child(4) { animation-delay: 0.39s; }
-      .splash-letter:nth-child(5) { animation-delay: 0.52s; }
-      .splash-letter:nth-child(6) { animation-delay: 0.65s; }
-      .splash-letter:nth-child(7) { animation-delay: 0.78s; }
-      .splash-letter:nth-child(8) { animation-delay: 0.91s; }
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
@@ -222,8 +247,8 @@ export default function BadmintonApp() {
 
   // Auth & Realtime Sync
   useEffect(() => {
-    const exitTimer = setTimeout(() => setSplashExiting(true), 2500);
-    const splashTimer = setTimeout(() => setSplashComplete(true), 3000);
+    const exitTimer = setTimeout(() => setSplashExiting(true), 3500);
+    const splashTimer = setTimeout(() => setSplashComplete(true), 4000);
 
     return () => {
       clearTimeout(exitTimer);
@@ -864,10 +889,10 @@ export default function BadmintonApp() {
         >
           <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
           <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
-          <div className="relative text-center animate-in fade-in zoom-in-95 duration-500">
+          <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
             <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
               {'BADBEAOW'.split('').map((letter, index) => (
-                <span className={`splash-letter ${letter === 'O' ? 'splash-o' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+                <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
               ))}
             </h1>
             <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
