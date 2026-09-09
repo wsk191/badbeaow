@@ -36,6 +36,7 @@ export default function BadmintonApp() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
+  const [splashExiting, setSplashExiting] = useState(false);
 
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -109,15 +110,64 @@ export default function BadmintonApp() {
         70% { transform: translate(-50%, -3px) scale(0.97); }
         100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
       }
-      @keyframes splash-a {
-        0% { opacity: 0; transform: translateY(-18px); }
-        65% { opacity: 1; transform: translateY(3px); }
-        100% { opacity: 1; transform: translateY(0); }
+      @keyframes splash-letter {
+        0% { opacity: 0; color: #ffffff; transform: translateZ(420px) scale(2.8); text-shadow: none; }
+        62% { opacity: 1; color: #ffffff; transform: translateZ(45px) scale(1.08); text-shadow: 0 0 18px rgba(255, 255, 255, 0.95); }
+        82% { color: #fb7185; transform: translateZ(-8px) scale(0.98); text-shadow: 0 0 12px rgba(251, 113, 133, 0.7); }
+        100% { opacity: 1; color: #ff4d35; transform: translateZ(0) scale(1); text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
       }
-      .splash-a {
+      .splash-title {
+        perspective: 800px;
+        transform-style: preserve-3d;
+      }
+      @keyframes splash-screen-exit {
+        0%, 65% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      @keyframes splash-light-flash {
+        0%, 42% { opacity: 0; }
+        62% { opacity: 0.95; }
+        100% { opacity: 0; }
+      }
+      @keyframes splash-o-zoom {
+        0% { color: #ff4d35; transform: translateZ(0) scale(1); text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
+        100% { color: #ffffff; transform: translateZ(80px) scale(14); text-shadow: 0 0 35px rgba(255, 255, 255, 0.95); }
+      }
+      @keyframes splash-word-zoom {
+        0% { transform: scale(1); color: #ff4d35; text-shadow: 0 0 8px rgba(255, 77, 53, 0.45); }
+        100% { transform: scale(7); color: #ffffff; text-shadow: 0 0 35px rgba(255, 255, 255, 0.95); }
+      }
+      .splash-screen-exiting {
+        animation: splash-screen-exit 0.5s ease-in forwards;
+      }
+      .splash-screen-exiting::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background: #ffffff;
+        animation: splash-light-flash 0.5s ease-out forwards;
+      }
+      .splash-screen-exiting .splash-title {
+        position: relative;
+        z-index: 2;
+        transform-origin: center center;
+        animation: splash-word-zoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .splash-letter {
         display: inline-block;
-        animation: splash-a 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+        transform-origin: center;
+        animation: splash-letter 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
       }
+      .splash-letter:nth-child(1) { animation-delay: 0s; }
+      .splash-letter:nth-child(2) { animation-delay: 0.13s; }
+      .splash-letter:nth-child(3) { animation-delay: 0.26s; }
+      .splash-letter:nth-child(4) { animation-delay: 0.39s; }
+      .splash-letter:nth-child(5) { animation-delay: 0.52s; }
+      .splash-letter:nth-child(6) { animation-delay: 0.65s; }
+      .splash-letter:nth-child(7) { animation-delay: 0.78s; }
+      .splash-letter:nth-child(8) { animation-delay: 0.91s; }
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
@@ -172,9 +222,13 @@ export default function BadmintonApp() {
 
   // Auth & Realtime Sync
   useEffect(() => {
+    const exitTimer = setTimeout(() => setSplashExiting(true), 2500);
     const splashTimer = setTimeout(() => setSplashComplete(true), 3000);
 
-    return () => clearTimeout(splashTimer);
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(splashTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -800,26 +854,30 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  if (loading || !splashComplete) return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden relative"
-      style={{ fontFamily: "'Prompt', sans-serif" }}
-    >
-      <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
-      <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
-      <div className="relative text-center animate-in fade-in zoom-in-95 duration-500">
-        <h1 className="text-3xl font-black tracking-[0.18em]">BADBE<span className="splash-a">A</span>OW</h1>
-        <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
-        <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-          กำลังเตรียมระบบ...
-        </div>
-      </div>
-    </div>
-  );
+  const showSplash = loading || !splashComplete;
 
   return (
     <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200">
+      {showSplash && (
+        <div
+          className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
+        >
+          <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
+          <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+          <div className="relative text-center animate-in fade-in zoom-in-95 duration-500">
+            <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
+              {'BADBEAOW'.split('').map((letter, index) => (
+                <span className={`splash-letter ${letter === 'O' ? 'splash-o' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+              ))}
+            </h1>
+            <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+            <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+              กำลังเตรียมระบบ...
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Toast Notification */}
       <div className={`fixed top-6 left-1/2 z-50 transition-all duration-300 ease-out ${toast.message ? 'opacity-100 scale-100 animate-jelly' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
