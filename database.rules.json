@@ -1,0 +1,48 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": false,
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')"
+      }
+    },
+    "boardAdmins": {
+      "$courtId": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || data.child(auth.uid).exists())",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'"
+      }
+    },
+    "badbeaow": {
+      "players": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "queue": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "court": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists())"
+      },
+      "courts": {
+        "$courtId": {
+          "players": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          },
+          "queue": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          },
+          "court": {
+            ".read": "auth != null",
+            ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists())"
+          }
+        }
+      }
+    }
+  }
+}

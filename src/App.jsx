@@ -12,7 +12,7 @@ import {
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
-import { getDatabase, ref, onValue, push, update, remove, set } from 'firebase/database';
+import { getDatabase, ref, onValue, push, update, remove, set, get } from 'firebase/database';
 
 const COURTS = [
   { id: 'court-1', name: 'คอร์ด 1', accent: 'from-violet-700 to-indigo-900', solid: 'bg-violet-600', text: 'text-violet-600' },
@@ -42,6 +42,8 @@ export default function BadmintonApp() {
   const [activeTab, setActiveTab] = useState('queue');
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState('user');
+  const [managedAdminIds, setManagedAdminIds] = useState({});
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
@@ -69,6 +71,7 @@ export default function BadmintonApp() {
   const [queueToDelete, setQueueToDelete] = useState(null);
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [showDeleteAllPlayersModal, setShowDeleteAllPlayersModal] = useState(false);
+  const [adminUidInput, setAdminUidInput] = useState('');
   
   // Edit Player State
   const [playerToEdit, setPlayerToEdit] = useState(null);
@@ -330,15 +333,43 @@ export default function BadmintonApp() {
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        const isUserAdmin = currentUser.email ? true : false;
-        setIsAdmin(isUserAdmin);
+      if (currentUser?.email) {
+        get(ref(db, `users/${currentUser.uid}/role`)).then((snapshot) => {
+          const role = snapshot.val() || 'user';
+          setUserRole(role);
+        }).catch((error) => {
+          console.error('Role lookup error:', error);
+          setUserRole('user');
+        });
+      } else if (currentUser) {
+        setUserRole('user');
+        setIsAdmin(false);
+      } else {
+        setUserRole('user');
+        setIsAdmin(false);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user || !selectedCourtId) {
+      setManagedAdminIds({});
+      setIsAdmin(false);
+      return;
+    }
+
+    const adminsRef = ref(db, `boardAdmins/${selectedCourtId}`);
+    const unsubscribe = onValue(adminsRef, (snapshot) => {
+      const admins = snapshot.val() || {};
+      setManagedAdminIds(admins);
+      setIsAdmin(userRole === 'superAdmin' || admins[user.uid] === true);
+    });
+
+    return () => unsubscribe();
+  }, [user, userRole, selectedCourtId]);
 
   // Admin Login Handler
   const handleAdminLogin = async (e) => {
@@ -362,6 +393,7 @@ export default function BadmintonApp() {
     try {
       await signOut(auth);
       await signInAnonymously(auth);
+      setUserRole('user');
       setIsAdmin(false);
       showToast('ออกจากระบบแอดมินแล้ว', 'success');
     } catch (error) {
@@ -476,6 +508,38 @@ export default function BadmintonApp() {
     setCourt({ teamA: null, teamB: null });
     setDraftPair([null, null]);
     setAllCourtPlayers({});
+  };
+
+  const handleAddCourtAdmin = async (e) => {
+    e.preventDefault();
+    if (userRole !== 'superAdmin') return;
+    const adminUid = adminUidInput.trim();
+    if (!adminUid) return;
+
+    setIsProcessing(true);
+    try {
+      await set(ref(db, `boardAdmins/${selectedCourtId}/${adminUid}`), true);
+      setAdminUidInput('');
+      showToast('เพิ่มผู้ดูแลคอร์ดเรียบร้อยแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('เพิ่มผู้ดูแลคอร์ดไม่สำเร็จ', 'error');
+    }
+    setIsProcessing(false);
+  };
+
+  const handleRemoveCourtAdmin = async (adminUid) => {
+    if (userRole !== 'superAdmin') return;
+
+    setIsProcessing(true);
+    try {
+      await remove(ref(db, `boardAdmins/${selectedCourtId}/${adminUid}`));
+      showToast('ถอดสิทธิ์ผู้ดูแลคอร์ดแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('ถอดสิทธิ์ไม่สำเร็จ', 'error');
+    }
+    setIsProcessing(false);
   };
 
   const rankedPlayers = useMemo(() => {
@@ -664,7 +728,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeletePlayer = async () => {
-    if (!playerToDelete) return;
+    if (!playerToDelete || !isAdmin) return;
     setIsProcessing(true);
     try {
       await remove(ref(db, `${courtRoot}/players/${playerToDelete}`));
@@ -685,6 +749,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteAllPlayers = async () => {
+      if (!isAdmin) return;
       setIsProcessing(true);
       try {
           await set(ref(db, `${courtRoot}/players`), null);
@@ -806,7 +871,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete) return; 
+    if (!queueToDelete || !isAdmin) return; 
     setIsProcessing(true);
     try {
       await remove(ref(db, `${courtRoot}/queue/${queueToDelete}`));
@@ -817,7 +882,7 @@ export default function BadmintonApp() {
   };
 
   const handleStartGame = async () => {
-    if (queue.length < 2) return;
+    if (!isAdmin || queue.length < 2) return;
     setIsProcessing(true);
     try {
       const courtRef = ref(db, `${courtRoot}/court`);
@@ -830,6 +895,7 @@ export default function BadmintonApp() {
   };
 
   const handleWin = async (winnerTeam) => {
+    if (!isAdmin) return;
     setIsProcessing(true);
     try {
       let nextTeamA = winnerTeam === 'A' ? court.teamA : null;
@@ -878,6 +944,7 @@ export default function BadmintonApp() {
   };
 
   const handleClearCourt = async () => {
+    if (!isAdmin) return;
     setIsProcessing(true);
     try {
       const queueRef = ref(db, `${courtRoot}/queue`);
@@ -1646,6 +1713,51 @@ export default function BadmintonApp() {
             </div>
           </div>
         )}
+        {activeTab === 'admins' && userRole === 'superAdmin' && (
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-950 rounded-3xl p-5 text-white shadow-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck size={21} />
+                <h2 className="text-lg font-bold">SuperAdmin</h2>
+              </div>
+              <p className="text-xs text-white/70">จัดการผู้ดูแลของ {selectedCourt.name}</p>
+            </div>
+
+            <form onSubmit={handleAddCourtAdmin} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 space-y-3">
+              <div>
+                <h3 className="text-[15px] font-bold text-gray-800">เพิ่ม Admin ให้คอร์ดนี้</h3>
+                <p className="text-[11px] text-gray-500 mt-1">ใส่ Firebase Auth UID ของผู้ดูแล</p>
+              </div>
+              <input
+                value={adminUidInput}
+                onChange={(e) => setAdminUidInput(e.target.value)}
+                placeholder="เช่น abc123..."
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
+              />
+              <button type="submit" disabled={isProcessing || !adminUidInput.trim()} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50">
+                เพิ่มสิทธิ์ Admin
+              </button>
+            </form>
+
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-[15px] font-bold text-gray-800 mb-3">Admin ของ {selectedCourt.name}</h3>
+              {Object.keys(managedAdminIds).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Admin ประจำคอร์ดนี้</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.keys(managedAdminIds).map((adminUid) => (
+                    <div key={adminUid} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3">
+                      <span className="text-xs text-gray-600 break-all">{adminUid}</span>
+                      <button onClick={() => handleRemoveCourtAdmin(adminUid)} disabled={isProcessing} className="shrink-0 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
+                        ถอดสิทธิ์
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Navigation */}
@@ -1670,6 +1782,13 @@ export default function BadmintonApp() {
             <Wallet size={22} className={activeTab === 'payment' ? 'drop-shadow-sm' : ''} />
             <span className="text-[10px]">คิดเงิน</span>
           </button>
+
+          {userRole === 'superAdmin' && (
+            <button onClick={() => setActiveTab('admins')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'admins' ? 'text-purple-600 font-bold transform scale-105 transition-all' : 'text-gray-400 hover:text-gray-600'}`}>
+              <ShieldCheck size={22} className={activeTab === 'admins' ? 'drop-shadow-sm' : ''} />
+              <span className="text-[10px]">ผู้ดูแล</span>
+            </button>
+          )}
         </div>
       </nav>
 
