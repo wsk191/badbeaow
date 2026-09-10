@@ -57,6 +57,7 @@ export default function BadmintonApp() {
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
+  const [showCourtOneAd, setShowCourtOneAd] = useState(false);
 
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -151,6 +152,10 @@ export default function BadmintonApp() {
         70% { transform: translate(-50%, -3px) scale(0.97); }
         100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
       }
+      @keyframes shrink {
+        from { transform: scaleX(1); }
+        to { transform: scaleX(0); }
+      }
       .splash-title {
         width: 100%;
         display: flex;
@@ -189,7 +194,13 @@ export default function BadmintonApp() {
       .splash-letter:nth-child(7) { animation-delay: 0.78s; }
       .splash-letter:nth-child(8) { animation-delay: 0.91s; }
       @keyframes splash-screen-exit {
-        0%, 100% { opacity: 1; }
+        0% { opacity: 1; }
+        100% { opacity: 1; }
+      }
+      @keyframes splash-content-exit {
+        0% { opacity: 1; transform: scale(1); }
+        45% { opacity: 0.45; transform: scale(1.015) translateY(-3px); filter: blur(1px); }
+        100% { opacity: 0; transform: scale(1.035) translateY(-8px); filter: blur(4px); }
       }
       @keyframes splash-o-impact {
         0%, 100% { transform: scale(1) rotate(0); }
@@ -215,12 +226,13 @@ export default function BadmintonApp() {
         box-shadow: 5px 16px 0 -0.5px rgba(255, 255, 255, 0.8);
       }
       @keyframes splash-light-flash {
-        0%, 42% { opacity: 0; }
-        62% { opacity: 0.95; }
+        0% { opacity: 0; }
+        42% { opacity: 0.18; }
+        66% { opacity: 0.78; }
         100% { opacity: 0; }
       }
       .splash-screen-exiting {
-        animation: splash-screen-exit 0.5s ease-in forwards;
+        animation: splash-screen-exit 0.7s ease-in forwards;
       }
       .splash-screen-exiting::after {
         content: '';
@@ -228,12 +240,18 @@ export default function BadmintonApp() {
         inset: 0;
         z-index: 1;
         pointer-events: none;
-        background: #ffffff;
-        animation: splash-light-flash 0.5s ease-out forwards;
+        background: rgba(255, 255, 255, 0.96);
+        backdrop-filter: blur(5px);
+        animation: splash-light-flash 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
       .splash-screen-exiting .splash-title {
         position: relative;
+        z-index: 3;
+      }
+      .splash-screen-exiting .splash-content {
+        position: relative;
         z-index: 2;
+        animation: splash-content-exit 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
       .animate-jelly {
         animation: jelly-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -337,7 +355,7 @@ export default function BadmintonApp() {
     setSplashComplete(false);
     setSplashExiting(false);
     const splashDuration = selectedCourtId ? 3000 : 4000;
-    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 500);
+    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 700);
     const splashTimer = setTimeout(() => setSplashComplete(true), splashDuration);
 
     return () => {
@@ -345,6 +363,17 @@ export default function BadmintonApp() {
       clearTimeout(splashTimer);
     };
   }, [selectedCourtId]);
+
+  useEffect(() => {
+    if (loading || selectedCourtId !== 'court-1' || !splashComplete) {
+      setShowCourtOneAd(false);
+      return undefined;
+    }
+
+    setShowCourtOneAd(true);
+    const adTimer = setTimeout(() => setShowCourtOneAd(false), 10000);
+    return () => clearTimeout(adTimer);
+  }, [loading, selectedCourtId, splashComplete]);
 
   useEffect(() => {
     const dateTimer = setInterval(() => {
@@ -1346,7 +1375,7 @@ export default function BadmintonApp() {
           <div
             className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
           >
-            <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+            <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
               <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
                 {'BADBEAOW'.split('').map((letter, index) => (
                   <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
@@ -1510,7 +1539,7 @@ export default function BadmintonApp() {
           >
             <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
             <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
-            <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+            <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
               <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
                 {'BADBEAOW'.split('').map((letter, index) => (
                   <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
@@ -1652,7 +1681,7 @@ export default function BadmintonApp() {
         >
           <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
           <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
-          <div className="relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+          <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
             <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
               {'BADBEAOW'.split('').map((letter, index) => (
                 <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
@@ -1662,6 +1691,29 @@ export default function BadmintonApp() {
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
               กำลังเตรียมระบบ...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCourtOneAd && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-300 via-orange-500 to-red-600 p-1 shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="relative overflow-hidden rounded-[1.8rem] bg-white px-6 py-9 text-center">
+              <button
+                onClick={() => setShowCourtOneAd(false)}
+                className="absolute right-4 top-4 rounded-full bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-800"
+                aria-label="ปิดโฆษณา"
+              >
+                <X size={19} />
+              </button>
+              <div className="mx-auto mb-5 flex h-20 w-20 rotate-[-6deg] items-center justify-center rounded-3xl bg-gradient-to-br from-orange-400 to-red-600 text-4xl shadow-lg">📣</div>
+              <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-orange-500">สนาม 1 presents</div>
+              <h2 className="text-4xl font-black tracking-tight text-gray-900">เจ๊เนยสั่งลุย</h2>
+              <p className="mt-3 text-sm font-medium text-gray-500">พร้อมลุยทุกเกม สนุกทุกแมตช์</p>
+              <div className="mx-auto mt-6 h-1.5 w-32 overflow-hidden rounded-full bg-orange-100">
+                <div className="h-full w-full origin-left animate-[shrink_10s_linear_forwards] rounded-full bg-orange-500" />
+              </div>
             </div>
           </div>
         </div>
