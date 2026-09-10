@@ -20,6 +20,11 @@
         ".read": "auth != null",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
         ".validate": "newData.isBoolean()"
+      },
+      "maintenanceSchedule": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
+        ".validate": "newData.hasChildren(['enabled', 'startTime', 'endTime']) && newData.child('enabled').isBoolean() && newData.child('startTime').isString() && newData.child('endTime').isString()"
       }
     },
     "badbeaow": {

@@ -43,6 +43,28 @@ const getTodayKey = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Bangkok',
 }).format(new Date());
 
+const getBangkokMinutes = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  return Number(parts.find(part => part.type === 'hour')?.value || 0) * 60
+    + Number(parts.find(part => part.type === 'minute')?.value || 0);
+};
+
+const isMaintenanceScheduleActive = (schedule, date = new Date()) => {
+  if (!schedule?.enabled || !schedule.startTime || !schedule.endTime) return false;
+  const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
+  const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  const now = getBangkokMinutes(date);
+  if (start === end) return false;
+  return start < end ? now >= start && now < end : now >= start || now < end;
+};
+
 export default function BadmintonApp() {
   const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [activeTab, setActiveTab] = useState('queue');
@@ -70,6 +92,11 @@ export default function BadmintonApp() {
   const [allCourtPlayers, setAllCourtPlayers] = useState({});
   const [dashboardData, setDashboardData] = useState({});
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceSchedule, setMaintenanceSchedule] = useState({ enabled: false, startTime: '18:00', endTime: '23:00' });
+  const [scheduleStartTime, setScheduleStartTime] = useState('18:00');
+  const [scheduleEndTime, setScheduleEndTime] = useState('23:00');
+  const [scheduleUpdating, setScheduleUpdating] = useState(false);
+  const [scheduleNow, setScheduleNow] = useState(Date.now());
   const [maintenanceUpdating, setMaintenanceUpdating] = useState(false);
   const [queue, setQueue] = useState([]);
   const [court, setCourt] = useState({ teamA: null, teamB: null });
@@ -106,6 +133,8 @@ export default function BadmintonApp() {
   const [todayKey, setTodayKey] = useState(getTodayKey);
 
   const selectedCourt = COURTS.find(courtItem => courtItem.id === selectedCourtId);
+  const scheduledMaintenanceMode = isMaintenanceScheduleActive(maintenanceSchedule, new Date(scheduleNow));
+  const effectiveMaintenanceMode = maintenanceMode || scheduledMaintenanceMode;
   const resultLockStartedAt = Number(court.resultLockStartedAt || 0);
   const resultLockRemaining = Math.max(0, resultLockStartedAt + 300000 - resultLockNow);
   const isResultLocked = userRole !== 'superAdmin' && resultLockRemaining > 0;
@@ -456,6 +485,28 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
+    const scheduleRef = ref(db, 'systemStatus/maintenanceSchedule');
+    return onValue(scheduleRef, snapshot => {
+      const schedule = snapshot.val() || {};
+      const nextSchedule = {
+        enabled: schedule.enabled === true,
+        startTime: schedule.startTime || '18:00',
+        endTime: schedule.endTime || '23:00',
+      };
+      setMaintenanceSchedule(nextSchedule);
+      setScheduleStartTime(nextSchedule.startTime);
+      setScheduleEndTime(nextSchedule.endTime);
+    }, error => {
+      console.error('Maintenance schedule lookup error:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    const scheduleTimer = setInterval(() => setScheduleNow(Date.now()), 30000);
+    return () => clearInterval(scheduleTimer);
+  }, []);
+
+  useEffect(() => {
     const adminCourtId = selectedCourtId || (userRole === 'superAdmin' ? superAdminCourtId : null);
     if (!user || !adminCourtId) {
       setManagedAdminIds({});
@@ -534,6 +585,29 @@ export default function BadmintonApp() {
       showToast(errorMessage, 'error');
     } finally {
       setMaintenanceUpdating(false);
+    }
+  };
+
+  const saveMaintenanceSchedule = async () => {
+    if (userRole !== 'superAdmin') return;
+    if (scheduleStartTime === scheduleEndTime) {
+      showToast('เวลาเปิดและเวลาปิดต้องไม่เหมือนกัน', 'error');
+      return;
+    }
+
+    setScheduleUpdating(true);
+    try {
+      await set(ref(db, 'systemStatus/maintenanceSchedule'), {
+        enabled: maintenanceSchedule.enabled,
+        startTime: scheduleStartTime,
+        endTime: scheduleEndTime,
+      });
+      showToast(maintenanceSchedule.enabled ? 'บันทึกเวลาเปิด-ปิดระบบแล้ว' : 'ปิดการเปิด-ปิดระบบอัตโนมัติแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('บันทึกตารางเวลาไม่สำเร็จ', 'error');
+    } finally {
+      setScheduleUpdating(false);
     }
   };
 
@@ -1326,7 +1400,7 @@ export default function BadmintonApp() {
   const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
   const superAdminCourt = COURTS.find(courtItem => courtItem.id === superAdminCourtId) || COURTS[0];
 
-  if (!loading && maintenanceMode && userRole !== 'superAdmin') {
+  if (!loading && effectiveMaintenanceMode && userRole !== 'superAdmin') {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen max-w-md mx-auto relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-center px-6">
         <div className="absolute inset-0 opacity-20 bg-[linear-gradient(135deg,transparent_25%,rgba(255,255,255,0.08)_25%,rgba(255,255,255,0.08)_50%,transparent_50%,transparent_75%,rgba(255,255,255,0.08)_75%)] bg-[length:44px_44px]" />
@@ -1424,18 +1498,48 @@ export default function BadmintonApp() {
                 </div>
               ))}
             </div>
-            <div className={`rounded-3xl border p-5 shadow-sm ${maintenanceMode ? 'border-amber-200 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}`}>
+            <div className={`rounded-3xl border p-5 shadow-sm ${effectiveMaintenanceMode ? 'border-amber-200 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}`}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 font-bold text-gray-800"><Wrench size={18} /> สถานะการเปิดระบบ</div>
-                  <p className={`mt-1 text-xs ${maintenanceMode ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    {maintenanceMode ? 'ผู้ใช้ทั่วไปจะเห็นหน้าระบบกำลังปรับปรุง' : 'ผู้ใช้ทั่วไปสามารถเข้าใช้งานระบบได้ตามปกติ'}
+                  <p className={`mt-1 text-xs ${effectiveMaintenanceMode ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {scheduledMaintenanceMode ? 'ระบบกำลังปิดตามเวลาที่ตั้งไว้' : effectiveMaintenanceMode ? 'ผู้ใช้ทั่วไปจะเห็นหน้าระบบกำลังปรับปรุง' : 'ผู้ใช้ทั่วไปสามารถเข้าใช้งานระบบได้ตามปกติ'}
                   </p>
                 </div>
                 <button onClick={toggleMaintenanceMode} disabled={maintenanceUpdating} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 ${maintenanceMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
                   {maintenanceUpdating ? 'กำลังบันทึก...' : maintenanceMode ? 'เปิดระบบ' : 'ปิดระบบ'}
                 </button>
               </div>
+            </div>
+            <div className="rounded-3xl border border-indigo-100 bg-indigo-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 font-bold text-gray-800"><Wrench size={18} /> เปิด-ปิดระบบอัตโนมัติ</div>
+                  <p className="mt-1 text-xs text-indigo-700">ใช้เวลาไทย และระบบจะปิดรับผู้ใช้ทั่วไปในช่วงเวลานี้</p>
+                </div>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={maintenanceSchedule.enabled}
+                    onChange={event => setMaintenanceSchedule(schedule => ({ ...schedule, enabled: event.target.checked }))}
+                    className="peer sr-only"
+                  />
+                  <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-indigo-600 after:absolute after:left-[3px] after:top-[3px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-5" />
+                </label>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <label className="text-xs font-semibold text-gray-600">
+                  เวลาเริ่มปิด
+                  <input type="time" value={scheduleStartTime} onChange={event => setScheduleStartTime(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-100 bg-white px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-indigo-500" />
+                </label>
+                <label className="text-xs font-semibold text-gray-600">
+                  เวลาเปิดกลับ
+                  <input type="time" value={scheduleEndTime} onChange={event => setScheduleEndTime(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-100 bg-white px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-indigo-500" />
+                </label>
+              </div>
+              <button onClick={saveMaintenanceSchedule} disabled={scheduleUpdating} className="mt-4 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50">
+                {scheduleUpdating ? 'กำลังบันทึก...' : 'บันทึกตารางเวลา'}
+              </button>
             </div>
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-4">
