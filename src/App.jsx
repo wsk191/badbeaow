@@ -95,7 +95,7 @@ export default function BadmintonApp() {
   const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [financeModalTab, setFinanceModalTab] = useState('slips'); // 'slips' | 'history'
   const [previewSlipImage, setPreviewSlipImage] = useState(null);
-  const [historyFilter, setHistoryFilter] = useState('all'); // 'all' | 'confirmed' | 'rejected'
+  const [historyFilter, setHistoryFilter] = useState('all');
 
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -225,7 +225,7 @@ export default function BadmintonApp() {
     };
   }, [user, handleLogout]);
 
-  // Inject Tailwind CSS, Fonts, Styles
+  // Inject Tailwind CSS, Fonts, Styles & Court Themes
   useEffect(() => {
     const tailwindScript = document.createElement('script');
     tailwindScript.src = 'https://cdn.tailwindcss.com';
@@ -336,6 +336,45 @@ export default function BadmintonApp() {
       .drag-handle {
           touch-action: none;
       }
+      .court-theme-court-2 .text-purple-600 { color: #b45309 !important; }
+      .court-theme-court-2 .text-purple-700 { color: #92400e !important; }
+      .court-theme-court-2 .text-purple-500 { color: #d97706 !important; }
+      .court-theme-court-2 .text-purple-300 { color: #fed7aa !important; }
+      .court-theme-court-2 .bg-purple-50 { background-color: #fffbeb !important; }
+      .court-theme-court-2 .bg-purple-100 { background-color: #fef3c7 !important; }
+      .court-theme-court-2 .bg-purple-500 { background-color: #d97706 !important; }
+      .court-theme-court-2 .bg-purple-600 { background-color: #d97706 !important; }
+      .court-theme-court-2 .bg-purple-700 { background-color: #b45309 !important; }
+      .court-theme-court-2 .hover\\:bg-purple-700:hover { background-color: #b45309 !important; }
+      .court-theme-court-2 .border-purple-100 { border-color: #fde68a !important; }
+      .court-theme-court-2 .border-purple-200 { border-color: #fcd34d !important; }
+      .court-theme-court-2 .border-purple-500 { border-color: #d97706 !important; }
+      .court-theme-court-3 .text-purple-600 { color: #047857 !important; }
+      .court-theme-court-3 .text-purple-700 { color: #065f46 !important; }
+      .court-theme-court-3 .text-purple-500 { color: #059669 !important; }
+      .court-theme-court-3 .text-purple-300 { color: #a7f3d0 !important; }
+      .court-theme-court-3 .bg-purple-50 { background-color: #ecfdf5 !important; }
+      .court-theme-court-3 .bg-purple-100 { background-color: #d1fae5 !important; }
+      .court-theme-court-3 .bg-purple-500 { background-color: #059669 !important; }
+      .court-theme-court-3 .bg-purple-600 { background-color: #059669 !important; }
+      .court-theme-court-3 .bg-purple-700 { background-color: #047857 !important; }
+      .court-theme-court-3 .hover\\:bg-purple-700:hover { background-color: #047857 !important; }
+      .court-theme-court-3 .border-purple-100 { border-color: #a7f3d0 !important; }
+      .court-theme-court-3 .border-purple-200 { border-color: #6ee7b7 !important; }
+      .court-theme-court-3 .border-purple-500 { border-color: #059669 !important; }
+      .court-theme-court-4 .text-purple-600 { color: #0369a1 !important; }
+      .court-theme-court-4 .text-purple-700 { color: #075985 !important; }
+      .court-theme-court-4 .text-purple-500 { color: #0284c7 !important; }
+      .court-theme-court-4 .text-purple-300 { color: #bae6fd !important; }
+      .court-theme-court-4 .bg-purple-50 { background-color: #f0f9ff !important; }
+      .court-theme-court-4 .bg-purple-100 { background-color: #e0f2fe !important; }
+      .court-theme-court-4 .bg-purple-500 { background-color: #0284c7 !important; }
+      .court-theme-court-4 .bg-purple-600 { background-color: #0284c7 !important; }
+      .court-theme-court-4 .bg-purple-700 { background-color: #0369a1 !important; }
+      .court-theme-court-4 .hover\\:bg-purple-700:hover { background-color: #0369a1 !important; }
+      .court-theme-court-4 .border-purple-100 { border-color: #bae6fd !important; }
+      .court-theme-court-4 .border-purple-200 { border-color: #7dd3fc !important; }
+      .court-theme-court-4 .border-purple-500 { border-color: #0284c7 !important; }
     `;
     document.head.appendChild(style);
 
@@ -426,8 +465,8 @@ export default function BadmintonApp() {
   useEffect(() => {
     setSplashComplete(false);
     setSplashExiting(false);
-    const splashDuration = selectedCourtId ? 2500 : 3500;
-    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 600);
+    const splashDuration = selectedCourtId ? 3000 : 4000;
+    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 700);
     const splashTimer = setTimeout(() => setSplashComplete(true), splashDuration);
 
     return () => {
@@ -468,7 +507,6 @@ export default function BadmintonApp() {
     });
   }, []);
 
-  // ดึงรายการแจ้งโอนทั้งหมด (ทั้งรอตรวจ และประวัติที่เสร็จสิ้นแล้ว)
   useEffect(() => {
     if (!user || !selectedCourtId) {
       setPaymentRequests([]);
@@ -999,7 +1037,6 @@ export default function BadmintonApp() {
     };
   }, [dashboardData, todayKey]);
 
-  // คัดแยกสลิปที่รอตรวจ และสลิปที่เป็นประวัติ
   const pendingRequests = useMemo(() => {
     return paymentRequests.filter(req => req.status === 'pending');
   }, [paymentRequests]);
@@ -1106,6 +1143,31 @@ export default function BadmintonApp() {
     setIsProcessing(true);
     try {
       await update(ref(db, `${courtRoot}/players/${playerToEdit.id}`), { name: trimmedName });
+
+      const queueUpdates = {};
+      queue.forEach(q => {
+        if (q.pair) {
+          const pIndex = q.pair.findIndex(p => p.id === playerToEdit.id);
+          if (pIndex !== -1) queueUpdates[`${q.id}/pair/${pIndex}/name`] = trimmedName;
+        }
+      });
+      if (Object.keys(queueUpdates).length > 0) {
+        await update(ref(db, `${courtRoot}/queue`), queueUpdates);
+      }
+
+      const courtUpdates = {};
+      if (court.teamA) {
+        const pIndex = court.teamA.findIndex(p => p.id === playerToEdit.id);
+        if (pIndex !== -1) courtUpdates[`teamA/${pIndex}/name`] = trimmedName;
+      }
+      if (court.teamB) {
+        const pIndex = court.teamB.findIndex(p => p.id === playerToEdit.id);
+        if (pIndex !== -1) courtUpdates[`teamB/${pIndex}/name`] = trimmedName;
+      }
+      if (Object.keys(courtUpdates).length > 0) {
+        await update(ref(db, `${courtRoot}/court`), courtUpdates);
+      }
+
       setPlayerToEdit(null);
       showToast('เปลี่ยนชื่อผู้เล่นสำเร็จ!', 'success');
     } catch { 
@@ -1171,7 +1233,7 @@ export default function BadmintonApp() {
           await set(ref(db, `${courtRoot}/queue`), null);
           await set(ref(db, `${courtRoot}/court`), { teamA: null, teamB: null });
           setShowDeleteAllPlayersModal(false);
-          showToast('ล้างข้อมูลผู้เล่นทั้งหมดเรียบร้อยแล้ว!', 'success');
+          showToast('ล้างข้อมูลผู้เล่น คิว และสนามทั้งหมดเรียบร้อยแล้ว!', 'success');
       } catch {
           showToast('เกิดข้อผิดพลาดในการลบข้อมูลทั้งหมด', 'error');
       }
@@ -1404,9 +1466,9 @@ export default function BadmintonApp() {
       updates[`${courtRoot}/court`] = { teamA: null, teamB: null };
       await update(ref(db), updates);
       setCourt({ teamA: null, teamB: null });
-      showToast('เคลียร์สนามและนำคู่กลับเข้าคิวเรียบร้อย', 'success');
+      showToast('เคลียร์สนามและนำคู่กลับเข้าคิวเรียบร้อย (ข้ามคู่ที่มีอยู่แล้ว)', 'success');
     } catch { 
-      showToast('เคลียร์สนามไม่สำเร็จ', 'error');
+      showToast('เคลียร์สนามไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
     }
     setIsProcessing(false);
   };
@@ -1469,7 +1531,7 @@ export default function BadmintonApp() {
       const playerRef = ref(db, `${courtRoot}/players/${playerId}`);
       await update(playerRef, { debt: newDebt });
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
-      showToast('ชำระเงินเรียบร้อย!', 'success');
+      showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!', 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -1666,6 +1728,27 @@ export default function BadmintonApp() {
   if (!selectedCourtId) {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50 text-gray-800 max-w-md mx-auto px-5 py-10 relative overflow-hidden">
+        {showSplash && (
+          <div
+            className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
+          >
+            <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
+            <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+            <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+              <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
+                {'BADBEAOW'.split('').map((letter, index) => (
+                  <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+                ))}
+              </h1>
+              <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+              <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                กำลังเตรียมระบบ...
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="text-center pt-6 pb-6">
           <div className="flex justify-center mb-4">
             <div className="relative flex items-center justify-center">
@@ -1743,10 +1826,56 @@ export default function BadmintonApp() {
 
   // หน้าจอจัดการคอร์ดที่เลือก
   return (
-    <div style={{ fontFamily: "'Prompt', sans-serif" }} className={`min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200`}>
+    <div style={{ fontFamily: "'Prompt', sans-serif" }} className={`court-theme-${selectedCourtId} min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200`}>
+      {/* Splash Screen */}
+      {showSplash && (
+        <div
+          className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br ${selectedCourt.accent} flex items-center justify-center px-6 text-white overflow-hidden`}
+        >
+          <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
+          <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+          <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+            <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
+              {'BADBEAOW'.split('').map((letter, index) => (
+                <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
+              ))}
+            </h1>
+            <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+            <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+              กำลังเตรียมระบบ...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* โฆษณา เจ๊เนยสั่งลุย (สนาม 1) */}
+      {showCourtOneAd && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-300 via-orange-500 to-red-600 p-1 shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="relative overflow-hidden rounded-[1.8rem] bg-white px-6 py-9 text-center">
+              <button
+                onClick={() => setShowCourtOneAd(false)}
+                className="absolute right-4 top-4 rounded-full bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-800"
+                aria-label="ปิดโฆษณา"
+              >
+                <X size={19} />
+              </button>
+              <div className="mx-auto mb-5 flex h-20 w-20 rotate-[-6deg] items-center justify-center rounded-3xl bg-gradient-to-br from-orange-400 to-red-600 text-4xl shadow-lg">📣</div>
+              <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-orange-500">สนาม 1 presents</div>
+              <h2 className="text-4xl font-black tracking-tight text-gray-900">เจ๊เนยสั่งลุย</h2>
+              <p className="mt-3 text-sm font-medium text-gray-500">พร้อมลุยทุกเกม สนุกทุกแมตช์</p>
+              <div className="mx-auto mt-6 h-1.5 w-32 overflow-hidden rounded-full bg-orange-100">
+                <div className="h-full w-full origin-left animate-[shrink_10s_linear_forwards] rounded-full bg-orange-500" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       <div className={`fixed top-6 left-1/2 z-50 transition-all duration-300 ease-out ${toast.message ? 'opacity-100 scale-100 animate-jelly' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
-        <div className={`px-6 py-3.5 rounded-full shadow-lg font-semibold flex items-center gap-2.5 text-[13px] whitespace-nowrap text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+        <div className={`px-6 py-3.5 rounded-full shadow-lg font-semibold flex items-center gap-2.5 text-[13px] whitespace-nowrap text-white ${toast.type === 'error' ? 'bg-red-500 shadow-[0_8px_30px_rgb(239,68,68,0.3)]' : 'bg-emerald-500 shadow-[0_8px_30px_rgb(16,185,129,0.3)]'}`}>
           <div className="bg-white/20 rounded-full p-0.5">
             {toast.type === 'error' ? <X size={14} /> : <Check size={14} />}
           </div>
@@ -1786,6 +1915,69 @@ export default function BadmintonApp() {
 
       {/* Main Content Area */}
       <main className="min-h-[calc(100vh-160px)]">
+        {/* TAB: DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <div className="p-4 space-y-5">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 rounded-3xl p-5 text-white shadow-xl">
+              <div className="flex items-center gap-2 mb-1">
+                <LayoutDashboard size={21} />
+                <h2 className="text-lg font-bold">Dashboard ภาพรวม</h2>
+              </div>
+              <p className="text-xs text-white/65">สรุปข้อมูลทุกคอร์ดแบบเรียลไทม์</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'ผู้เล่นทั้งหมด', value: dashboardSummary.playerCount, color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'มาเล่นวันนี้', value: dashboardSummary.presentCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'คู่รอสนาม', value: dashboardSummary.queueCount, color: 'text-amber-600', bg: 'bg-amber-50' },
+                { label: 'สนามกำลังแข่ง', value: dashboardSummary.playingCount, color: 'text-purple-600', bg: 'bg-purple-50' },
+              ].map((metric) => (
+                <div key={metric.label} className={`${metric.bg} rounded-2xl p-4 border border-white shadow-sm`}>
+                  <div className="text-[11px] text-gray-500 font-medium">{metric.label}</div>
+                  <div className={`text-2xl font-black mt-1 ${metric.color}`}>{metric.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-[15px] font-bold text-gray-800">สถานะแต่ละคอร์ด</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">ข้อมูลผู้เล่น คิว และสนาม</p>
+                </div>
+                {userRole === 'superAdmin' && (
+                  <div className="text-right">
+                    <div className="text-[11px] text-gray-400">ยอดค้างชำระรวม</div>
+                    <div className="text-sm font-black text-red-500">{dashboardSummary.debtTotal.toFixed(2)} ฿</div>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                {dashboardSummary.courts.map((courtItem) => (
+                  <div
+                    key={courtItem.id}
+                    className="w-full text-left border border-gray-100 rounded-2xl p-4 hover:border-gray-300 hover:shadow-sm transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`font-bold ${courtItem.text}`}>{courtItem.name}</span>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${courtItem.isPlaying ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                        {courtItem.isPlaying ? 'กำลังแข่ง' : 'สนามว่าง'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      <div><div className="text-base font-black text-gray-800">{courtItem.playerCount}</div><div className="text-[9px] text-gray-400">ผู้เล่น</div></div>
+                      <div><div className="text-base font-black text-emerald-600">{courtItem.presentCount}</div><div className="text-[9px] text-gray-400">มาวันนี้</div></div>
+                      <div><div className="text-base font-black text-amber-600">{courtItem.queueCount}</div><div className="text-[9px] text-gray-400">คู่รอ</div></div>
+                      {userRole === 'superAdmin' && <div><div className="text-base font-black text-red-500">{courtItem.debtTotal.toFixed(0)}</div><div className="text-[9px] text-gray-400">หนี้ ฿</div></div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB: QUEUE */}
         {activeTab === 'queue' && (
           <div className="p-4 space-y-6">
@@ -2131,7 +2323,6 @@ export default function BadmintonApp() {
                   </button>
                 </div>
 
-                {/* กล่องแจ้งเตือนสลิปใหม่แบบกะทัดรัด ไม่ดันหน้าจอ */}
                 {pendingRequests.length > 0 && (
                   <div 
                     onClick={() => { setShowFinanceModal(true); setFinanceModalTab('slips'); }}
@@ -2266,13 +2457,59 @@ export default function BadmintonApp() {
             </div>
           </div>
         )}
+
+        {/* TAB: ADMINS (เฉพาะ SuperAdmin) */}
+        {activeTab === 'admins' && userRole === 'superAdmin' && (
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-950 rounded-3xl p-5 text-white shadow-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck size={21} />
+                <h2 className="text-lg font-bold">SuperAdmin</h2>
+              </div>
+              <p className="text-xs text-white/70">จัดการผู้ดูแลของ {selectedCourt.name}</p>
+            </div>
+
+            <form onSubmit={handleAddCourtAdmin} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 space-y-3">
+              <div>
+                <h3 className="text-[15px] font-bold text-gray-800">เพิ่ม Admin ให้คอร์ดนี้</h3>
+                <p className="text-[11px] text-gray-500 mt-1">ใส่ Firebase Auth UID ของผู้ดูแล</p>
+              </div>
+              <input
+                value={adminUidInput}
+                onChange={(e) => setAdminUidInput(e.target.value)}
+                placeholder="เช่น abc123..."
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
+              />
+              <button type="submit" disabled={isProcessing || !adminUidInput.trim()} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50">
+                เพิ่มสิทธิ์ Admin
+              </button>
+            </form>
+
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-[15px] font-bold text-gray-800 mb-3">Admin ของ {selectedCourt.name}</h3>
+              {Object.keys(managedAdminIds).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Admin ประจำคอร์ดนี้</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.keys(managedAdminIds).map((adminUid) => (
+                    <div key={adminUid} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3">
+                      <span className="text-xs text-gray-600 break-all">{adminUid}</span>
+                      <button onClick={() => handleRemoveCourtAdmin(adminUid)} disabled={isProcessing} className="shrink-0 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
+                        ถอดสิทธิ์
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* POPUP MODAL: ตรวจสอบสลิป & ประวัติการจ่ายเงินสำหรับแอดมิน */}
       {showFinanceModal && isAdmin && (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
-            {/* Header */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Receipt className="text-amber-400" size={20} />
@@ -2283,7 +2520,6 @@ export default function BadmintonApp() {
               </button>
             </div>
 
-            {/* Tabs */}
             <div className="flex border-b border-gray-100 bg-gray-50 shrink-0">
               <button
                 onClick={() => setFinanceModalTab('slips')}
@@ -2307,7 +2543,6 @@ export default function BadmintonApp() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-4 overflow-y-auto flex-1 space-y-4">
               {financeModalTab === 'slips' && (
                 <div>
@@ -2505,7 +2740,21 @@ export default function BadmintonApp() {
 
       {/* เมนูเพิ่มเติม */}
       {showMoreMenu && (
-        <div className="fixed bottom-[74px] right-3 z-40 w-44 bg-white rounded-2xl border border-gray-100 shadow-xl p-2">
+        <div className="fixed bottom-[74px] right-3 z-40 w-44 bg-white rounded-2xl border border-gray-100 shadow-xl p-2 space-y-1">
+          <button
+            onClick={() => { setActiveTab('dashboard'); setShowMoreMenu(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${activeTab === 'dashboard' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <LayoutDashboard size={16} /> ภาพรวม
+          </button>
+          {userRole === 'superAdmin' && (
+            <button
+              onClick={() => { setActiveTab('admins'); setShowMoreMenu(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${activeTab === 'admins' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <ShieldCheck size={16} /> ผู้ดูแล
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => { setShowFinanceModal(true); setFinanceModalTab('slips'); setShowMoreMenu(false); }}
@@ -2528,6 +2777,14 @@ export default function BadmintonApp() {
           >
             <BookOpen size={16} /> คู่มือการใช้งาน
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => { setShowAdminGuide(true); setShowMoreMenu(false); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+            >
+              <ShieldCheck size={16} /> คู่มือแอดมิน
+            </button>
+          )}
         </div>
       )}
 
@@ -2614,17 +2871,50 @@ export default function BadmintonApp() {
         </div>
       )}
 
-      {/* Modal แนะนำการใช้งาน */}
+      {/* Modal คู่มือการใช้งาน */}
       {showGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-md max-h-[80vh] shadow-2xl overflow-hidden flex flex-col">
-            <div className={`p-4 text-white bg-gradient-to-r ${selectedCourt.accent} flex items-center justify-between`}>
-              <div className="font-bold flex items-center gap-2"><BookOpen size={18} /> คู่มือการใช้งาน</div>
-              <button onClick={() => setShowGuide(false)} className="p-1 text-white/80 hover:text-white"><X size={18} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className={`bg-gradient-to-br ${selectedCourt.accent} p-5 text-white flex items-start justify-between`}>
+              <div>
+                <div className="flex items-center gap-2 mb-1"><BookOpen size={21} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
+                <p className="text-xs text-white/75">BADBEAOW ระบบจัดการคิวตีแบด</p>
+              </div>
+              <button onClick={() => setShowGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือ"><X size={20} /></button>
             </div>
-            <div className="p-5 overflow-y-auto space-y-4 text-xs text-gray-600 leading-5">
-              <p>🏸 <b>การเข้าสู่ระบบ:</b> แอดมินสามารถเข้าสู่ระบบและคงสถานะไว้ได้ 1 ชั่วโมง (หากไม่มีการใช้งานเกิน 1 ชม. ระบบจะล็อกเอาท์อัตโนมัติ)</p>
-              <p>💰 <b>การเงิน & ตรวจสลิป:</b> สลิปที่ผู้เล่นส่งมาจะอยู่ในปุ่ม "ตรวจสลิปแจ้งโอน" แอดมินสามารถเปิดดูรูป ใส่ยอดเงินจริง และตรวจสอบประวัติการชำระเงินย้อนหลังได้ตลอดเวลา</p>
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-92px)] text-sm text-gray-700 space-y-4 leading-6">
+              <section>
+                <h3 className="font-bold text-gray-900 mb-1">เริ่มต้นใช้งาน</h3>
+                <ol className="list-decimal list-inside space-y-1 text-gray-600 text-xs">
+                  <li>เลือกคอร์ดที่ต้องการใช้งาน</li>
+                  <li>เปิดเมนู <b>รายชื่อ</b> แล้วเปิดสวิตช์ข้างชื่อคนที่มาเล่นวันนี้</li>
+                  <li>ไปที่ <b>คิวสนาม</b> เลือกผู้เล่น 2 คน แล้วกด <b>เพิ่มเข้าคิวรอ</b></li>
+                </ol>
+              </section>
+              <section>
+                <h3 className="font-bold text-gray-900 mb-1">จัดคิวและเริ่มแข่ง</h3>
+                <ul className="list-disc list-inside space-y-1 text-gray-600 text-xs">
+                  <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
+                  <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
+                  <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal คู่มือแอดมิน */}
+      {showAdminGuide && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className={`flex items-start justify-between bg-gradient-to-br ${selectedCourt.accent} p-5 text-white`}>
+              <div><div className="mb-1 flex items-center gap-2"><ShieldCheck size={21} /><h2 className="text-lg font-bold">คู่มือแอดมิน</h2></div><p className="text-xs text-white/75">สิทธิ์และขั้นตอนการดูแลสนาม</p></div>
+              <button onClick={() => setShowAdminGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือแอดมิน"><X size={20} /></button>
+            </div>
+            <div className="max-h-[85vh] space-y-4 overflow-y-auto p-5 text-xs text-gray-600 leading-5">
+              <section><h3 className="font-bold text-gray-900 mb-1 text-sm">จัดการผู้เล่นและคิว</h3><p>เช็คชื่อผู้เล่น เพิ่มแก้ไขชื่อ และลากจัดลำดับคิวได้ตามต้องการ</p></section>
+              <section><h3 className="font-bold text-gray-900 mb-1 text-sm">คิดเงินและตรวจสลิป</h3><p>ตรวจสลิปจากปุ่ม <b>"ตรวจสลิปแจ้งโอน"</b> และตรวจสอบประวัติการเงินย้อนหลังได้ตลอดเวลา</p></section>
             </div>
           </div>
         </div>
