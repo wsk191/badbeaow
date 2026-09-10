@@ -8,9 +8,7 @@ import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
     signInAnonymously, 
-    sendSignInLinkToEmail,
-    isSignInWithEmailLink,
-    signInWithEmailLink,
+    signInWithEmailAndPassword,
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
@@ -84,8 +82,8 @@ export default function BadmintonApp() {
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [loginLinkSent, setLoginLinkSent] = useState(false);
 
   // Database State
   const [players, setPlayers] = useState([]);
@@ -416,15 +414,7 @@ export default function BadmintonApp() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (isSignInWithEmailLink(auth, window.location.href)) {
-          let email = window.localStorage.getItem('badbeaowSignInEmail');
-          if (!email) email = window.prompt('กรุณากรอกอีเมลที่ขอลิงก์เข้าสู่ระบบ');
-          if (email) {
-            await signInWithEmailLink(auth, email.trim(), window.location.href);
-            window.localStorage.removeItem('badbeaowSignInEmail');
-            window.history.replaceState({}, document.title, window.location.pathname);
-          }
-        } else if (!auth.currentUser) {
+        if (!auth.currentUser) {
           await signInAnonymously(auth);
         }
       } catch (error) {
@@ -533,26 +523,47 @@ export default function BadmintonApp() {
   const handleAdminLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
-    setLoginLinkSent(false);
     setIsProcessing(true);
     try {
-      const email = loginEmail.trim();
-      if (!email) throw new Error('auth/invalid-email');
-      await sendSignInLinkToEmail(auth, email, {
-        url: window.location.origin,
-        handleCodeInApp: true,
-      });
-      window.localStorage.setItem('badbeaowSignInEmail', email);
-      setLoginLinkSent(true);
-      showToast('ส่งลิงก์เข้าสู่ระบบไปที่อีเมลแล้ว', 'success');
+      const credential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      const roleSnapshot = await get(ref(db, `users/${credential.user.uid}/role`));
+      const role = roleSnapshot.val() || 'user';
+      const adminChecks = await Promise.all(COURTS.map(async courtItem => {
+        try {
+          const snapshot = await get(ref(db, `boardAdmins/${courtItem.id}/${credential.user.uid}`));
+          return snapshot.val() === true ? courtItem.id : null;
+        } catch (error) {
+          return null;
+        }
+      }));
+      const courtIds = adminChecks.filter(Boolean);
+      const isCourtAdmin = selectedCourtId ? courtIds.includes(selectedCourtId) : courtIds.length > 0;
+      const hasAdminAccess = role === 'superAdmin' || isCourtAdmin;
+
+      setUser(credential.user);
+      setUserRole(role);
+      setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
+      setIsAdmin(hasAdminAccess);
+      if (role !== 'superAdmin' && courtIds.length === 1) setSelectedCourtId(courtIds[0]);
+
+      setShowLoginModal(false);
+      setLoginEmail('');
+      setLoginPassword('');
+      showToast(role === 'superAdmin' || isCourtAdmin ? 'เข้าสู่ระบบสำเร็จ' : 'เข้าสู่ระบบแล้ว แต่ยังไม่มีสิทธิ์ผู้ดูแล', role === 'superAdmin' || isCourtAdmin ? 'success' : 'error');
     } catch (error) {
       console.error(error);
-      if (error.code === 'auth/invalid-email') {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/invalid-login-credentials' || error.code === 'auth/wrong-password') {
+        setLoginError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      } else if (error.code === 'auth/user-not-found') {
+        setLoginError('ไม่พบบัญชีอีเมลนี้ในระบบ');
+      } else if (error.code === 'auth/invalid-email') {
         setLoginError('รูปแบบอีเมลไม่ถูกต้อง');
       } else if (error.code === 'auth/operation-not-allowed') {
-        setLoginError('ยังไม่ได้เปิด Email Link ใน Firebase Authentication');
+        setLoginError('Firebase ยังไม่ได้เปิดการเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน');
+      } else if (error.code === 'auth/too-many-requests') {
+        setLoginError('ลองเข้าสู่ระบบหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่');
       } else {
-        setLoginError('ส่งลิงก์ไม่สำเร็จ กรุณาตรวจสอบการตั้งค่า Firebase Authentication');
+        setLoginError(`เข้าสู่ระบบไม่สำเร็จ (${error.code || 'ไม่ทราบสาเหตุ'})`);
       }
     }
     setIsProcessing(false);
@@ -1427,12 +1438,12 @@ export default function BadmintonApp() {
               <h3 className="mb-1 text-lg font-bold">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="mb-4 text-xs text-gray-500">สำหรับ SuperAdmin เพื่อเปิดระบบกลับมาใช้งาน</p>
               {loginError && <div className="mb-3 rounded-xl bg-red-50 p-3 text-center text-xs font-medium text-red-600">{loginError}</div>}
-              {loginLinkSent && <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-center text-xs font-medium text-emerald-700">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>}
               <form onSubmit={handleAdminLogin} className="space-y-3">
                 <input type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="อีเมล" required className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-purple-500 focus:outline-none" />
+                <input type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="รหัสผ่าน" required className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-purple-500 focus:outline-none" />
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-600">ยกเลิก</button>
-                  <button type="submit" disabled={isProcessing} className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:opacity-50">เข้าสู่ระบบ</button>
                 </div>
               </form>
             </div>
@@ -1762,12 +1773,12 @@ export default function BadmintonApp() {
               <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="text-xs text-gray-500 mb-4">ระบบจะพาไปยังคอร์ดตามสิทธิ์ของบัญชี</p>
               {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
-              {loginLinkSent && <div className="mb-3 p-3 bg-emerald-50 text-emerald-700 text-xs rounded-xl font-medium text-center">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>}
               <form onSubmit={handleAdminLogin} className="space-y-3">
                 <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 text-sm">ยกเลิก</button>
-                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">เข้าสู่ระบบ</button>
                 </div>
               </form>
             </div>
@@ -2641,10 +2652,6 @@ export default function BadmintonApp() {
                 {loginError}
               </div>
             )}
-            {loginLinkSent && (
-              <div className="mb-3 p-3 bg-emerald-50 text-emerald-700 text-xs rounded-xl font-medium text-center">ส่งลิงก์แล้ว กรุณาเปิดอีเมลเพื่อเข้าสู่ระบบ</div>
-            )}
-
             <form onSubmit={handleAdminLogin} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-semibold text-gray-600 mb-1">อีเมลแอดมิน</label>
@@ -2660,10 +2667,25 @@ export default function BadmintonApp() {
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">รหัสผ่าน</label>
+                <div className="relative">
+                  <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="รหัสผ่าน"
+                    required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
               
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
-                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">ส่งลิงก์เข้าสู่ระบบ</button>
+                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-md text-sm transition-colors disabled:opacity-50">เข้าสู่ระบบ</button>
               </div>
             </form>
           </div>
