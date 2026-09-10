@@ -14,7 +14,6 @@ import {
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction } from 'firebase/database';
 
-const BADMINTON_HERO_IMAGE = "/badminton-hero.png";
 const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 ชั่วโมง
 
 const COURTS = [
@@ -412,7 +411,7 @@ export default function BadmintonApp() {
     return () => clearInterval(timer);
   }, [court.resultLockStartedAt]);
 
-  // Auth Listener - แก้ปัญหา Session หลุดเวลาเปลี่ยนหน้า
+  // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
@@ -1582,8 +1581,8 @@ export default function BadmintonApp() {
         </div>
 
         {showLoginModal && (
-          <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl animate-in zoom-in-95 duration-200">
               <h3 className="mb-1 text-lg font-bold">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="mb-4 text-xs text-gray-500">สำหรับ SuperAdmin เพื่อเปิดระบบกลับมาใช้งาน</p>
               {loginError && <div className="mb-3 rounded-xl bg-red-50 p-3 text-center text-xs font-medium text-red-600">{loginError}</div>}
@@ -1749,15 +1748,11 @@ export default function BadmintonApp() {
           </div>
         )}
 
-        <div className="text-center pt-6 pb-6">
-          <div className="flex justify-center mb-4">
-            <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400/20 via-pink-400/20 to-amber-300/20 blur-xl scale-110" />
-              <img
-                src={BADMINTON_HERO_IMAGE}
-                alt="Badminton Player"
-                className="relative w-36 h-36 object-contain drop-shadow-md select-none pointer-events-none"
-              />
+        <div className="text-center pt-8 pb-6">
+          <div className="flex justify-center mb-5">
+            <div className="relative flex items-center justify-center w-24 h-24 rounded-[2rem] bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-700 shadow-xl shadow-indigo-200 transform -rotate-6">
+              <div className="absolute inset-0 rounded-[2rem] bg-white/20 backdrop-blur-sm border border-white/30" />
+              <Swords size={48} className="text-white drop-shadow-md relative z-10" />
             </div>
           </div>
           <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">BADBEAOW</h1>
@@ -1804,17 +1799,23 @@ export default function BadmintonApp() {
         )}
 
         {showLoginModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
               <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="text-xs text-gray-500 mb-4">ระบบจะจำการล็อกอินไว้ 1 ชั่วโมง</p>
               {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
               <form onSubmit={handleAdminLogin} className="space-y-3">
-                <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
-                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                  <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                </div>
+                <div className="relative">
+                  <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                  <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+                </div>
                 <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-600 text-sm">ยกเลิก</button>
-                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 text-white text-sm disabled:opacity-50">เข้าสู่ระบบ</button>
+                  <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
+                  <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 hover:bg-slate-800 text-white text-sm disabled:opacity-50 transition-colors">เข้าสู่ระบบ</button>
                 </div>
               </form>
             </div>
@@ -2463,6 +2464,53 @@ export default function BadmintonApp() {
             </div>
           </div>
         )}
+
+        {/* TAB: ADMINS (เฉพาะ SuperAdmin) */}
+        {activeTab === 'admins' && userRole === 'superAdmin' && (
+          <div className="p-4 space-y-4">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-950 rounded-3xl p-5 text-white shadow-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck size={21} />
+                <h2 className="text-lg font-bold">SuperAdmin</h2>
+              </div>
+              <p className="text-xs text-white/70">จัดการผู้ดูแลของ {selectedCourt.name}</p>
+            </div>
+
+            <form onSubmit={handleAddCourtAdmin} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 space-y-3">
+              <div>
+                <h3 className="text-[15px] font-bold text-gray-800">เพิ่ม Admin ให้คอร์ดนี้</h3>
+                <p className="text-[11px] text-gray-500 mt-1">ใส่ Firebase Auth UID ของผู้ดูแล</p>
+              </div>
+              <input
+                value={adminUidInput}
+                onChange={(e) => setAdminUidInput(e.target.value)}
+                placeholder="เช่น abc123..."
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
+              />
+              <button type="submit" disabled={isProcessing || !adminUidInput.trim()} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50">
+                เพิ่มสิทธิ์ Admin
+              </button>
+            </form>
+
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-[15px] font-bold text-gray-800 mb-3">Admin ของ {selectedCourt.name}</h3>
+              {Object.keys(managedAdminIds).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Admin ประจำคอร์ดนี้</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.keys(managedAdminIds).map((adminUid) => (
+                    <div key={adminUid} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3">
+                      <span className="text-xs text-gray-600 break-all">{adminUid}</span>
+                      <button onClick={() => handleRemoveCourtAdmin(adminUid)} disabled={isProcessing} className="shrink-0 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
+                        ถอดสิทธิ์
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* POPUP MODAL: ตรวจสอบสลิป & ประวัติการจ่ายเงินสำหรับแอดมิน */}
@@ -2878,6 +2926,31 @@ export default function BadmintonApp() {
               <section><h3 className="font-bold text-gray-900 mb-1 text-sm">จัดการผู้เล่นและคิว</h3><p>เช็คชื่อผู้เล่น เพิ่มแก้ไขชื่อ และลากจัดลำดับคิวได้ตามต้องการ</p></section>
               <section><h3 className="font-bold text-gray-900 mb-1 text-sm">คิดเงินและตรวจสลิป</h3><p>ตรวจสลิปจากปุ่ม <b>"ตรวจสลิปแจ้งโอน"</b> และตรวจสอบประวัติการเงินย้อนหลังได้ตลอดเวลา</p></section>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Admin Login Modal (เรียกได้ทั้งจากหน้าแต่ละสนาม) */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
+            <p className="text-xs text-gray-500 mb-4">ระบบจะจำการล็อกอินไว้ 1 ชั่วโมง</p>
+            {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
+            <form onSubmit={handleAdminLogin} className="space-y-3">
+              <div className="relative">
+                <Mail size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+              </div>
+              <div className="relative">
+                <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
+                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 hover:bg-slate-800 text-white text-sm disabled:opacity-50 transition-colors">เข้าสู่ระบบ</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
