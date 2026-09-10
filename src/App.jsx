@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench, QrCode
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -78,6 +78,15 @@ export default function BadmintonApp() {
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
   const [showCourtOneAd, setShowCourtOneAd] = useState(false);
+  const [paymentQrCode, setPaymentQrCode] = useState('');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentPlayerId, setPaymentPlayerId] = useState('');
+  const [paymentSlipData, setPaymentSlipData] = useState('');
+  const [paymentSlipHash, setPaymentSlipHash] = useState('');
+  const [paymentSlipUploading, setPaymentSlipUploading] = useState(false);
+  const [paymentRequests, setPaymentRequests] = useState([]);
+  const [paymentReviewAmounts, setPaymentReviewAmounts] = useState({});
+  const [qrUploading, setQrUploading] = useState(false);
 
   // Admin Login Modal State
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -115,6 +124,7 @@ export default function BadmintonApp() {
   const [adminUidInput, setAdminUidInput] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showAdminGuide, setShowAdminGuide] = useState(false);
   
   // Edit Player State
   const [playerToEdit, setPlayerToEdit] = useState(null);
@@ -475,6 +485,29 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
+    const qrRef = ref(db, 'systemStatus/paymentQrCode');
+    return onValue(qrRef, snapshot => {
+      setPaymentQrCode(typeof snapshot.val() === 'string' ? snapshot.val() : '');
+    }, error => {
+      console.error('Payment QR lookup error:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user || !selectedCourtId || !isAdmin) {
+      setPaymentRequests([]);
+      return undefined;
+    }
+    const requestsRef = ref(db, `${courtRoot}/paymentRequests`);
+    return onValue(requestsRef, snapshot => {
+      const data = snapshot.val() || {};
+      const requests = Object.keys(data).map(id => ({ id, ...data[id] }));
+      requests.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setPaymentRequests(requests);
+    }, error => console.error('Payment requests lookup error:', error));
+  }, [user, selectedCourtId, isAdmin, courtRoot]);
+
+  useEffect(() => {
     const scheduleRef = ref(db, 'systemStatus/maintenanceSchedule');
     return onValue(scheduleRef, snapshot => {
       const schedule = snapshot.val() || {};
@@ -616,9 +649,197 @@ export default function BadmintonApp() {
       showToast(maintenanceSchedule.enabled ? 'บันทึกเวลาเปิด-ปิดระบบแล้ว' : 'ปิดการเปิด-ปิดระบบอัตโนมัติแล้ว', 'success');
     } catch (error) {
       console.error(error);
-      showToast('บันทึกตารางเวลาไม่สำเร็จ', 'error');
+      const errorMessage = error?.code === 'PERMISSION_DENIED'
+        ? 'ไม่มีสิทธิ์บันทึก ต้อง Publish Firebase Rules ล่าสุดก่อน'
+        : `บันทึกตารางเวลาไม่สำเร็จ (${error?.code || 'ไม่ทราบสาเหตุ'})`;
+      showToast(errorMessage, 'error');
     } finally {
       setScheduleUpdating(false);
+    }
+  };
+
+  const handleQrUpload = event => {
+    if (!isAdmin) {
+      showToast('เฉพาะแอดมินของสนามเท่านั้นที่อัปโหลด QR ได้', 'error');
+      return;
+    }
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('กรุณาเลือกไฟล์รูปภาพเท่านั้น', 'error');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast('รูป QR ต้องมีขนาดไม่เกิน 8MB', 'error');
+      return;
+    }
+
+    setQrUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const image = new Image();
+        image.src = reader.result;
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+        });
+        const maxSize = 1200;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        const optimizedQr = canvas.toDataURL('image/png');
+        await set(ref(db, 'systemStatus/paymentQrCode'), optimizedQr);
+        showToast('อัปโหลด QR พร้อมเพย์เรียบร้อยแล้ว', 'success');
+      } catch (error) {
+        console.error(error);
+        const errorMessage = error?.code === 'PERMISSION_DENIED'
+          ? 'ไม่มีสิทธิ์อัปโหลด ต้อง Publish Firebase Rules ล่าสุด'
+          : error?.code === 'NETWORK_ERROR'
+            ? 'เครือข่ายขัดข้อง กรุณาลองใหม่'
+            : 'อัปโหลด QR ไม่สำเร็จ กรุณาเลือกรูป QR ใหม่';
+        showToast(errorMessage, 'error');
+      } finally {
+        setQrUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      setQrUploading(false);
+      showToast('อ่านไฟล์รูปไม่สำเร็จ', 'error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeQrCode = async () => {
+    if (!isAdmin) return;
+    setQrUploading(true);
+    try {
+      await remove(ref(db, 'systemStatus/paymentQrCode'));
+      showToast('ลบรูป QR แล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('ลบรูป QR ไม่สำเร็จ', 'error');
+    } finally {
+      setQrUploading(false);
+    }
+  };
+
+  const handleSlipUpload = event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('กรุณาเลือกไฟล์สลิปเป็นรูปภาพเท่านั้น', 'error');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast('รูปสลิปต้องมีขนาดไม่เกิน 8MB', 'error');
+      return;
+    }
+
+    setPaymentSlipUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const image = new Image();
+        image.src = reader.result;
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+        });
+        const maxSize = 1400;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        const optimizedSlip = canvas.toDataURL('image/jpeg', 0.78);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(optimizedSlip));
+        const hash = Array.from(new Uint8Array(hashBuffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+        setPaymentSlipData(optimizedSlip);
+        setPaymentSlipHash(hash);
+      } catch (error) {
+        console.error(error);
+        showToast('อ่านรูปสลิปไม่สำเร็จ กรุณาเลือกรูปใหม่', 'error');
+      } finally {
+        setPaymentSlipUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      setPaymentSlipUploading(false);
+      showToast('อ่านไฟล์สลิปไม่สำเร็จ', 'error');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const submitPaymentRequest = async () => {
+    const player = players.find(item => item.id === paymentPlayerId);
+    if (!player || !paymentSlipData || !paymentSlipHash) {
+      showToast('กรุณาแนบรูปสลิปก่อนส่งรายการ', 'error');
+      return;
+    }
+    if (!paymentQrCode) {
+      showToast('ยังไม่มีรูป QR พร้อมเพย์ กรุณาแจ้งแอดมิน', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const requestRef = push(ref(db, `${courtRoot}/paymentRequests`));
+      const hashRef = ref(db, `systemStatus/paymentSlipHashes/${paymentSlipHash}`);
+      const hashResult = await runTransaction(hashRef, current => current || {
+        requestId: requestRef.key,
+        createdAt: Date.now(),
+      });
+      if (!hashResult.committed || hashResult.snapshot.val()?.requestId !== requestRef.key) {
+        throw new Error('สลิปนี้ถูกส่งเข้าระบบแล้ว ไม่สามารถใช้ซ้ำได้');
+      }
+      await set(requestRef, {
+        playerId: player.id,
+        playerName: player.name,
+        slipImage: paymentSlipData,
+        slipHash: paymentSlipHash,
+        status: 'pending',
+        createdAt: Date.now(),
+      });
+      setShowPaymentForm(false);
+      setPaymentPlayerId('');
+      setPaymentSlipData('');
+      setPaymentSlipHash('');
+      showToast('ส่งสลิปแล้ว กรุณารอแอดมินตรวจสอบ', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'ส่งรายการแจ้งโอนไม่สำเร็จ', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const updatePaymentRequest = async (request, status) => {
+    if (!isAdmin) return;
+    setIsProcessing(true);
+    try {
+      const updates = { status, reviewedAt: Date.now(), reviewedBy: user?.uid || '' };
+      if (status === 'confirmed') {
+        const player = players.find(item => item.id === request.playerId);
+        if (!player) throw new Error('ไม่พบผู้เล่น');
+        const receivedAmount = Number(paymentReviewAmounts[request.id]);
+        if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) throw new Error('กรุณาระบุยอดที่ได้รับจริง');
+        if (receivedAmount > Number(player.debt || 0)) throw new Error('ยอดที่ได้รับจริงมากกว่ายอดหนี้ปัจจุบัน');
+        updates.receivedAmount = receivedAmount;
+        updates.playerDebt = Math.max(0, (player.debt || 0) - receivedAmount);
+        await update(ref(db, `${courtRoot}/players/${request.playerId}`), { debt: updates.playerDebt });
+      }
+      await update(ref(db, `${courtRoot}/paymentRequests/${request.id}`), updates);
+      setPaymentReviewAmounts(previous => ({ ...previous, [request.id]: '' }));
+      showToast(status === 'confirmed' ? 'ยืนยันการชำระเงินแล้ว' : 'ปฏิเสธรายการชำระเงินแล้ว', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'อัปเดตรายการชำระเงินไม่สำเร็จ', 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -1474,11 +1695,16 @@ export default function BadmintonApp() {
             </div>
           </div>
         )}
+        <div className={`fixed left-1/2 top-6 z-[80] transition-all duration-300 ease-out ${toast.message ? 'pointer-events-auto translate-x-[-50%] scale-100 opacity-100' : 'pointer-events-none translate-x-[-50%] -translate-y-3 scale-95 opacity-0'}`}>
+          <div className={`whitespace-nowrap rounded-full px-5 py-3 text-xs font-semibold text-white shadow-xl ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+            {toast.message}
+          </div>
+        </div>
         <header className="bg-slate-950 text-white px-5 pt-10 pb-5 sticky top-0 z-20">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[11px] text-indigo-300 font-semibold tracking-wide">BADBEAOW CONTROL CENTER</div>
-              <h1 className="text-xl font-black mt-1">ศูนย์ควบคุมระบบ</h1>
+                {scheduleUpdating ? 'กำลังบันทึก...' : 'บันทึกตารางเวลา'}
             </div>
             <button onClick={handleLogout} className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl" title="ออกจากระบบ">
               <LogOut size={18} />
@@ -1528,14 +1754,14 @@ export default function BadmintonApp() {
                   <div className="flex items-center gap-2 font-bold text-gray-800"><Wrench size={18} /> เปิด-ปิดระบบอัตโนมัติ</div>
                   <p className="mt-1 text-xs text-indigo-700">ใช้เวลาไทย และระบบจะปิดรับผู้ใช้ทั่วไปในช่วงเวลานี้</p>
                 </div>
-                <label className="relative inline-flex cursor-pointer items-center">
+                <label className="shrink-0 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={maintenanceSchedule.enabled}
                     onChange={event => setMaintenanceSchedule(schedule => ({ ...schedule, enabled: event.target.checked }))}
                     className="peer sr-only"
                   />
-                  <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-indigo-600 after:absolute after:left-[3px] after:top-[3px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-5" />
+                  <span className="relative block h-7 w-12 rounded-full bg-gray-300 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-indigo-600 peer-checked:after:translate-x-5" />
                 </label>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1548,9 +1774,23 @@ export default function BadmintonApp() {
                   <input type="time" value={scheduleEndTime} onChange={event => setScheduleEndTime(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-100 bg-white px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-indigo-500" />
                 </label>
               </div>
-              <button onClick={saveMaintenanceSchedule} disabled={scheduleUpdating} className="mt-4 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50">
+              <button onClick={saveMaintenanceSchedule} disabled={scheduleUpdating} aria-busy={scheduleUpdating} className="mt-4 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70">
                 {scheduleUpdating ? 'กำลังบันทึก...' : 'บันทึกตารางเวลา'}
               </button>
+            </div>
+            <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 font-bold text-gray-800"><QrCode size={18} /> QR พร้อมเพย์สำหรับผู้เล่น</div>
+                  <p className="mt-1 text-xs text-emerald-700">อัปโหลดรูป QR ที่ผู้เล่นจะใช้สแกนจ่ายเงิน</p>
+                </div>
+                {paymentQrCode && <img src={paymentQrCode} alt="ตัวอย่าง QR พร้อมเพย์" className="h-14 w-14 rounded-lg border border-white bg-white object-contain shadow-sm" />}
+              </div>
+              <label className={`mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 ${qrUploading ? 'pointer-events-none opacity-60' : ''}`}>
+                <QrCode size={16} /> {qrUploading ? 'กำลังอัปโหลด...' : paymentQrCode ? 'เปลี่ยนรูป QR' : 'เพิ่มรูป QR'}
+                <input type="file" accept="image/*" onChange={handleQrUpload} disabled={qrUploading} className="sr-only" />
+              </label>
+              {paymentQrCode && <button onClick={removeQrCode} disabled={qrUploading} className="mt-2 w-full rounded-xl py-2 text-xs font-bold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50">ลบรูป QR</button>}
             </div>
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -1671,7 +1911,11 @@ export default function BadmintonApp() {
 
         <div className="text-center pt-8 pb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-lg mb-5">
-            <Swords size={30} />
+            <img
+              src="https://sc04.alicdn.com/kf/Hf3c215600e2047e7a04b026b9cc72140u.jpg"
+              alt="ลูกแบดมินตัน"
+              className="h-14 w-14 rounded-2xl object-contain"
+            />
           </div>
           <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">BADBEAOW</h1>
           <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>
@@ -1749,14 +1993,15 @@ export default function BadmintonApp() {
                     <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
                     <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
                     <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
-                    <li>แอดมินสามารถแตะค้างที่ไอคอนลากเพื่อสลับลำดับคิว</li>
+                    <li>แตะค้างที่ไอคอนลากเพื่อดูหรือสลับลำดับคิว</li>
                   </ul>
                 </section>
                 <section>
-                  <h3 className="font-bold text-gray-900 mb-1.5">ดูอันดับและการเงิน</h3>
+                  <h3 className="font-bold text-gray-900 mb-1.5">ดูอันดับและชำระเงิน</h3>
                   <ul className="list-disc list-inside space-y-1 text-gray-600">
                     <li>ดูอันดับผู้เล่นได้ที่เมนู <b>จัดอันดับ</b> โดยเลือกดูเฉพาะคอร์ดหรือรวม 4 คอร์ด</li>
-                    <li>แอดมินกดเข้าสู่ระบบเพื่อแก้ไขข้อมูลผู้เล่น จัดการคิว และใช้เมนูคิดเงิน</li>
+                    <li>ดูยอดค้างจ่ายของตัวเองได้ที่เมนู <b>คิดเงิน</b></li>
+                    <li>กด <b>จ่ายเงิน</b> ข้างชื่อของตัวเองเพื่อดู QR และส่งรูปสลิป</li>
                   </ul>
                 </section>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">
@@ -1830,6 +2075,33 @@ export default function BadmintonApp() {
                 <div className="h-full w-full origin-left animate-[shrink_10s_linear_forwards] rounded-full bg-orange-500" />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPaymentForm && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-5 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <button onClick={() => setShowPaymentForm(false)} className="absolute right-4 top-4 rounded-full bg-gray-100 p-2 text-gray-500 hover:bg-gray-200" aria-label="ปิดแบบฟอร์มแจ้งโอน"><X size={19} /></button>
+            <h2 className="text-lg font-black text-gray-800">แจ้งโอนเงิน</h2>
+            <p className="mt-1 text-xs text-gray-500">ตรวจสอบชื่อ แล้วแนบสลิปหลังโอนเงิน</p>
+            <label className="mt-5 block text-xs font-bold text-gray-600">ชื่อผู้เล่น
+              <select value={paymentPlayerId} disabled className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-100 px-3 py-3 text-sm font-medium text-gray-800 outline-none">
+                <option value="">เลือกชื่อผู้เล่น</option>
+                {players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}
+              </select>
+            </label>
+            <img src={paymentQrCode} alt="QR พร้อมเพย์" className="mx-auto mt-4 h-44 w-44 rounded-2xl border border-gray-100 bg-white object-contain p-2" />
+            <label className="mt-4 block text-xs font-bold text-gray-600">รูปสลิปการโอน
+              <input type="file" accept="image/*" onChange={handleSlipUpload} disabled={paymentSlipUploading} className="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-xs text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-bold file:text-sky-700" />
+            </label>
+            {paymentSlipData && <img src={paymentSlipData} alt="ตัวอย่างสลิป" className="mt-3 max-h-40 w-full rounded-xl border border-gray-100 object-contain" />}
+            {players.find(player => player.id === paymentPlayerId) && (
+              <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                หนี้ปัจจุบัน <b>{Number(players.find(player => player.id === paymentPlayerId)?.debt || 0).toFixed(2)} บาท</b>
+              </div>
+            )}
+            <button onClick={submitPaymentRequest} disabled={isProcessing || paymentSlipUploading || !paymentSlipData} className="mt-5 w-full rounded-xl bg-sky-600 py-3 text-sm font-bold text-white shadow-sm hover:bg-sky-700 disabled:cursor-wait disabled:opacity-50">{isProcessing ? 'กำลังส่งสลิป...' : 'ส่งสลิปให้แอดมินตรวจสอบ'}</button>
           </div>
         </div>
       )}
@@ -2402,6 +2674,34 @@ export default function BadmintonApp() {
 
             {isAdmin && (
               <>
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-[15px] font-bold text-gray-800"><QrCode size={18} className="text-emerald-600" /> QR พร้อมเพย์สนามนี้</h2>
+                      <p className="mt-1 text-[11px] text-emerald-700">แอดมินสนามสามารถเพิ่มหรือเปลี่ยนรูปได้</p>
+                    </div>
+                    {paymentQrCode && <img src={paymentQrCode} alt="ตัวอย่าง QR" className="h-12 w-12 rounded-lg bg-white object-contain" />}
+                  </div>
+                  <label className={`mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 ${qrUploading ? 'pointer-events-none opacity-60' : ''}`}>
+                    <QrCode size={16} /> {qrUploading ? 'กำลังอัปโหลด...' : paymentQrCode ? 'เปลี่ยน QR' : 'เพิ่ม QR'}
+                    <input type="file" accept="image/*" onChange={handleQrUpload} disabled={qrUploading} className="sr-only" />
+                  </label>
+                </div>
+                {paymentRequests.some(request => request.status === 'pending') && (
+                  <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
+                    <h2 className="mb-3 flex items-center gap-2 text-[15px] font-bold text-gray-800"><Receipt size={18} className="text-amber-600" /> รายการแจ้งโอน</h2>
+                    <div className="space-y-3">
+                      {paymentRequests.filter(request => request.status === 'pending').map(request => (
+                        <div key={request.id} className="rounded-2xl bg-white p-3 shadow-sm">
+                          <div className="flex items-center justify-between text-sm font-bold text-gray-800"><span>{request.playerName}</span><span className="text-amber-600">รอตรวจสอบสลิป</span></div>
+                          {request.slipImage && <img src={request.slipImage} alt={`สลิปของ ${request.playerName}`} className="mt-3 max-h-64 w-full rounded-xl border border-gray-100 object-contain" />}
+                          <input type="number" min="0.01" step="0.01" value={paymentReviewAmounts[request.id] ?? ''} onChange={event => setPaymentReviewAmounts(previous => ({ ...previous, [request.id]: event.target.value }))} placeholder="ยอดที่เข้าบัญชีจริง" className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs outline-none focus:border-emerald-500" />
+                          <div className="mt-2 flex gap-2"><button onClick={() => updatePaymentRequest(request, 'confirmed')} disabled={isProcessing} className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white disabled:opacity-50">ยืนยันได้รับเงิน</button><button onClick={() => updatePaymentRequest(request, 'rejected')} disabled={isProcessing} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-50">ปฏิเสธ</button></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-6 rounded-3xl shadow-lg text-white text-center transition-all">
                   <h2 className="text-base font-bold mb-1 flex items-center justify-center gap-2">
                     <Coins size={20} /> ค่าบำรุงประจำวัน
@@ -2456,7 +2756,10 @@ export default function BadmintonApp() {
                     <div key={player.id} className="p-4 flex flex-col gap-3">
                       <div className="flex justify-between items-center">
                         <div className="font-semibold text-sm text-gray-800">{player.name}</div>
-                        <div className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1 rounded-lg">{player.debt.toFixed(2)} ฿</div>
+                          {!isAdmin && <button onClick={() => { setPaymentPlayerId(player.id); setShowPaymentForm(true); }} disabled={!paymentQrCode} className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-gray-300">จ่ายเงิน</button>}
+                        </div>
                       </div>
                       
                       {isAdmin && (
@@ -2580,6 +2883,14 @@ export default function BadmintonApp() {
           >
             <BookOpen size={18} /> คู่มือการใช้งาน
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => { setShowAdminGuide(true); setShowMoreMenu(false); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+            >
+              <ShieldCheck size={18} /> คู่มือแอดมิน
+            </button>
+          )}
         </div>
       )}
 
@@ -2610,31 +2921,39 @@ export default function BadmintonApp() {
                   <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
                   <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
                   <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
-                  <li>แอดมินสามารถแตะค้างที่ไอคอนลากเพื่อสลับลำดับคิว</li>
+                  <li>ดูคู่คิวและลำดับคิวที่กำลังรอเข้าสนามได้</li>
                 </ul>
               </section>
 
-              <section>
-                <h3 className="font-bold text-gray-900 mb-2">ดูรายชื่อและอันดับ</h3>
+                <section>
+                  <h3 className="font-bold text-gray-900 mb-2">ดูอันดับและชำระเงิน</h3>
                 <ul className="list-disc list-inside space-y-1.5 text-gray-600">
-                  <li><b>รายชื่อ</b> ใช้ค้นหาชื่อ เช็คชื่อ แก้ไข หรือลบผู้เล่น</li>
-                  <li><b>จัดอันดับ</b> แสดงผู้เล่นที่ชนะมากที่สุด เลือกดูเฉพาะคอร์ดหรือรวม 4 คอร์ดได้</li>
-                </ul>
-              </section>
-
-              <section>
-                <h3 className="font-bold text-gray-900 mb-2">การเงินสำหรับแอดมิน</h3>
-                <ul className="list-disc list-inside space-y-1.5 text-gray-600">
-                  <li>กด <b>เข้าสู่ระบบแอดมิน</b> ที่มุมขวาบนเพื่อปลดล็อกเครื่องมือ</li>
-                  <li>แท็บ <b>คิดเงิน</b> ใช้เก็บค่าบำรุงคนละ 10 บาท หรือหารค่าคอร์ตตามบิลรวม</li>
-                  <li>บันทึกยอดที่ผู้เล่นชำระในรายการค้างจ่าย แล้วกด <b>จ่าย</b></li>
-                  <li>เมนู <b>เพิ่มเติม &gt; ภาพรวม</b> ใช้ดูสถานะทุกคอร์ดแบบเรียลไทม์</li>
+                  <li>ดูอันดับผู้เล่นได้ที่เมนู <b>จัดอันดับ</b> โดยเลือกดูเฉพาะคอร์ดหรือรวม 4 คอร์ด</li>
+                  <li>ดูยอดค้างจ่ายของตัวเองได้ที่เมนู <b>คิดเงิน</b></li>
+                  <li>กด <b>จ่ายเงิน</b> ข้างชื่อของตัวเองเพื่อดู QR และส่งรูปสลิป</li>
                 </ul>
               </section>
 
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">
                 <b>หมายเหตุ:</b> การลบผู้เล่นและการล้างระบบเป็นการกระทำถาวร ควรตรวจสอบให้แน่ใจก่อนยืนยันทุกครั้ง
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdminGuide && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className={`flex items-start justify-between bg-gradient-to-br ${selectedCourt.accent} p-5 text-white`}>
+              <div><div className="mb-1 flex items-center gap-2"><ShieldCheck size={21} /><h2 className="text-lg font-bold">คู่มือแอดมิน</h2></div><p className="text-xs text-white/75">สิทธิ์และขั้นตอนการดูแลสนาม</p></div>
+              <button onClick={() => setShowAdminGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือแอดมิน"><X size={20} /></button>
+            </div>
+            <div className="max-h-[85vh] space-y-5 overflow-y-auto p-5 text-sm text-gray-700">
+              <section><h3 className="mb-2 font-bold text-gray-900">จัดการผู้เล่นและคิว</h3><ul className="list-disc list-inside space-y-1.5 text-gray-600"><li>เช็คชื่อผู้เล่นที่มาเล่นวันนี้จากเมนู <b>รายชื่อ</b></li><li>เพิ่ม แก้ไข หรือลบชื่อผู้เล่นได้ โดยผู้เล่นที่มีหนี้จะต้องเคลียร์ยอดก่อนลบ</li><li>เลือกผู้เล่น 2 คนเพื่อเพิ่มคู่เข้าคิว และลากเพื่อเรียงลำดับคิวได้</li><li>ดึงคิวลงสนาม แล้วกดผลการแข่งขันเพื่อบันทึกสถิติผู้ชนะ</li></ul></section>
+              <section><h3 className="mb-2 font-bold text-gray-900">คิดเงินและตรวจสลิป</h3><ul className="list-disc list-inside space-y-1.5 text-gray-600"><li>เพิ่มค่าบำรุงคนละ 10 บาท หรือหารค่าคอร์ตตามบิลรวม</li><li>เพิ่ม/เปลี่ยน QR พร้อมเพย์ของสนามได้จากแท็บ <b>คิดเงิน</b></li><li>เปิดดูรายการแจ้งโอน ตรวจรูปสลิป และกรอก <b>ยอดที่เข้าบัญชีจริง</b></li><li>กดยืนยันแล้วระบบจะหักหนี้ตามยอดเงินจริง หากไม่ถูกต้องให้กดปฏิเสธ</li><li>ระบบกันไฟล์สลิปเดิมซ้ำ แต่สลิปที่แก้ไขภาพต้องตรวจสอบด้วยตนเอง</li></ul></section>
+              <section><h3 className="mb-2 font-bold text-gray-900">ดูแลระบบและความปลอดภัย</h3><ul className="list-disc list-inside space-y-1.5 text-gray-600"><li>ใช้ <b>เพิ่มเติม &gt; ภาพรวม</b> เพื่อติดตามสถานะทุกสนาม</li><li>SuperAdmin ตั้งเวลาเปิด-ปิดระบบและจัดการสิทธิ์แอดมินสนามได้</li><li>ตรวจสอบชื่อผู้เล่น ยอดเงิน และสลิปก่อนยืนยันทุกครั้ง</li><li>การลบข้อมูลและการเคลียร์หนี้เป็นการกระทำถาวร ควรตรวจสอบก่อนกดยืนยัน</li></ul></section>
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800"><b>หมายเหตุ:</b> คู่มือนี้แสดงเฉพาะบัญชีที่มีสิทธิ์แอดมินเท่านั้น</div>
             </div>
           </div>
         </div>

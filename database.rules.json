@@ -25,6 +25,18 @@
         ".read": "auth != null",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
         ".validate": "newData.hasChildren(['enabled', 'startTime', 'endTime']) && newData.child('enabled').isBoolean() && newData.child('startTime').isString() && newData.child('endTime').isString()"
+      },
+      "paymentQrCode": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists() || root.child('boardAdmins').child('court-2').child(auth.uid).exists() || root.child('boardAdmins').child('court-3').child(auth.uid).exists() || root.child('boardAdmins').child('court-4').child(auth.uid).exists())",
+        ".validate": "newData.isString()"
+      },
+      "paymentSlipHashes": {
+        "$slipHash": {
+          ".read": "auth != null",
+          ".write": "auth != null && !data.exists()",
+          ".validate": "newData.hasChildren(['requestId', 'createdAt']) && newData.child('requestId').isString() && newData.child('createdAt').isNumber()"
+        }
       }
     },
     "badbeaow": {
@@ -42,6 +54,13 @@
         ".read": "auth != null",
         ".write": "auth != null"
       },
+      "paymentRequests": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists())",
+        "$requestId": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists() || (!data.exists() && newData.child('playerId').isString()))",
+          ".validate": "newData.hasChildren(['playerId', 'playerName', 'slipImage', 'slipHash', 'status', 'createdAt']) && newData.child('playerId').isString() && newData.child('playerName').isString() && newData.child('slipImage').isString() && newData.child('slipHash').isString() && newData.child('status').isString() && newData.child('createdAt').isNumber()"
+        }
+      },
       "courts": {
         "$courtId": {
           "players": {
@@ -57,6 +76,13 @@
           "court": {
             ".read": "auth != null",
             ".write": "auth != null"
+          },
+          "paymentRequests": {
+            ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists())",
+            "$requestId": {
+              ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists() || (!data.exists() && newData.child('playerId').isString()))",
+              ".validate": "newData.hasChildren(['playerId', 'playerName', 'slipImage', 'slipHash', 'status', 'createdAt']) && newData.child('playerId').isString() && newData.child('playerName').isString() && newData.child('slipImage').isString() && newData.child('slipHash').isString() && newData.child('status').isString() && newData.child('createdAt').isNumber()"
+            }
           }
         }
       }
