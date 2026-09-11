@@ -428,6 +428,8 @@ export default function BadmintonApp() {
         try {
           const roleSnapshot = await get(ref(db, `users/${currentUser.uid}/role`));
           const role = roleSnapshot.val() || 'user';
+          setUserRole(role);
+
           const adminChecks = await Promise.all(COURTS.map(async (courtItem) => {
             try {
               const snapshot = await get(ref(db, `boardAdmins/${courtItem.id}/${currentUser.uid}`));
@@ -437,9 +439,7 @@ export default function BadmintonApp() {
             }
           }));
           const courtIds = adminChecks.filter(Boolean);
-          setUserRole(role);
           setAssignedCourtIds(role === 'superAdmin' ? COURTS.map(courtItem => courtItem.id) : courtIds);
-          setIsAdmin(role === 'superAdmin' || courtIds.includes(selectedCourtId));
           
           if (!localStorage.getItem('adminLastActive')) {
             localStorage.setItem('adminLastActive', Date.now().toString());
@@ -448,18 +448,16 @@ export default function BadmintonApp() {
           console.error('Role lookup error:', error);
           setUserRole('user');
           setAssignedCourtIds([]);
-          setIsAdmin(false);
         }
       } else {
         setUserRole('user');
         setAssignedCourtIds([]);
-        setIsAdmin(false);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [selectedCourtId]);
+  }, []);
 
   useEffect(() => {
     setSplashComplete(false);
@@ -818,6 +816,7 @@ export default function BadmintonApp() {
           return {
             id: key,
             ...player,
+            isFromToday,
             isPresent: isFromToday ? Boolean(player.isPresent) : false,
             attendanceDate: todayKey,
           };
