@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench, QrCode, History, Eye, Clock, Dumbbell, CalendarDays, Sparkles, Target, Activity
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench, QrCode, History, Eye, Clock, Dumbbell, CalendarDays, Sparkles, Target, Activity, MessageCircle, Send, PanelRightClose, PanelRightOpen
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -12,8 +12,9 @@ import {
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
-import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction } from 'firebase/database';
+import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast } from 'firebase/database';
 import ExercisePlanner from './components/ExercisePlanner';
+import CommunityCourt from './components/CommunityCourt';
 
 const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 ชั่วโมง
 
@@ -115,6 +116,7 @@ export default function BadmintonApp() {
   const [loading, setLoading] = useState(true);
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
+  const [splashVideoDone, setSplashVideoDone] = useState(false);
   const [showCourtOneAd, setShowCourtOneAd] = useState(false);
   const [paymentQrCode, setPaymentQrCode] = useState('');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -169,6 +171,70 @@ export default function BadmintonApp() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showAdminGuide, setShowAdminGuide] = useState(false);
+  const [remoteCommunityAvatars, setRemoteCommunityAvatars] = useState([]);
+  // Avatars created on this device, kept until the server confirms the write (or forever if rules block sharing).
+  const [localCommunityAvatars, setLocalCommunityAvatars] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('badbeaowCommunityLocalAvatars') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const communityAvatars = useMemo(() => {
+    const remoteIds = new Set(remoteCommunityAvatars.map(avatar => avatar.id));
+    return [...remoteCommunityAvatars, ...localCommunityAvatars.filter(avatar => !remoteIds.has(avatar.id))];
+  }, [remoteCommunityAvatars, localCommunityAvatars]);
+  const [communityPanelOpen, setCommunityPanelOpen] = useState(true);
+  const [communityChatOpen, setCommunityChatOpen] = useState(true);
+  const [pendingCommunityMessages, setPendingCommunityMessages] = useState([]);
+  const communityChatListRef = useRef(null);
+  const [communityOpen, setCommunityOpen] = useState(false);
+  const [communityView, setCommunityView] = useState('overview');
+  const [selectedCommunityAvatar, setSelectedCommunityAvatar] = useState(null);
+  const [communityMessages, setCommunityMessages] = useState([]);
+  const [communityChatDraft, setCommunityChatDraft] = useState('');
+  const [isCommunityFullscreen, setIsCommunityFullscreen] = useState(false);
+  const communityShellRef = useRef(null);
+  const [communityDeviceId] = useState(() => {
+    const savedId = localStorage.getItem('badbeaowCommunityDeviceId');
+    if (savedId) return savedId;
+    const newId = `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem('badbeaowCommunityDeviceId', newId);
+    return newId;
+  });
+  const [communityAvatar, setCommunityAvatar] = useState({
+    name: 'นักแบดสายฟ้า',
+    description: 'ชอบตีเร็วและเล่นสนุก',
+    shirt: '#3c83ee',
+    pants: '#293d9a',
+    hair: '#18243f',
+    skin: '#f1af7d',
+    shoes: '#f8fbff',
+    face: 'happy',
+    hairStyle: 'short',
+    gender: 'ชาย',
+    outfit: 'เสื้อยืด + กางเกงขาสั้น',
+  });
+  const communityModelOptions = [
+    '/models/Avatars/toothless_chimuelo_cute.glb',
+    '/models/Avatars/shiba.glb',
+    '/models/Avatars/roblox-bacon-hair.glb',
+    '/models/Avatars/mr_beast_meme.glb',
+    '/models/Avatars/free_rigged_toothless_meme.glb',
+  ];
+  const communityOwnerId = user?.uid || communityDeviceId;
+  const ownCommunityAvatar = communityAvatars.find(avatar => avatar.ownerId === communityOwnerId);
+  const displayedCommunityMessages = useMemo(() => {
+    const remoteIds = new Set(communityMessages.map(message => message.id));
+    return [...communityMessages, ...pendingCommunityMessages.filter(message => !remoteIds.has(message.id))]
+      .sort((first, second) => (first.createdAt || 0) - (second.createdAt || 0))
+      .slice(-60);
+  }, [communityMessages, pendingCommunityMessages]);
+  const communityGenderStyle = gender => {
+    if (gender === 'หญิง') return { symbol: '♀', className: 'bg-pink-500' };
+    if (gender === 'เพศทางเลือก') return { symbol: '⚧', className: 'bg-gradient-to-br from-rose-500 via-amber-400 to-sky-500' };
+    return { symbol: '♂', className: 'bg-sky-500' };
+  };
   
   // Edit Player State
   const [playerToEdit, setPlayerToEdit] = useState(null);
@@ -444,6 +510,15 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
+    const chatRef = query(ref(db, 'community/chat'), limitToLast(60));
+    return onValue(chatRef, snapshot => {
+      const data = snapshot.val() || {};
+      const messages = Object.entries(data).map(([id, message]) => ({ id, ...message })).sort((first, second) => (first.createdAt || 0) - (second.createdAt || 0));
+      setCommunityMessages(messages);
+    }, error => console.warn('Community chat is local only:', error.message));
+  }, []);
+
+  useEffect(() => {
     if (!court.resultLockStartedAt) return undefined;
     const timer = setInterval(() => setResultLockNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -500,14 +575,29 @@ export default function BadmintonApp() {
   useEffect(() => {
     setSplashComplete(false);
     setSplashExiting(false);
-    const splashDuration = selectedCourtId ? 3000 : 4000;
-    const exitTimer = setTimeout(() => setSplashExiting(true), splashDuration - 700);
-    const splashTimer = setTimeout(() => setSplashComplete(true), splashDuration);
+    setSplashVideoDone(false);
+    if (selectedCourtId) return undefined;
+
+    const exitTimer = setTimeout(() => setSplashExiting(true), 3300);
+    const splashTimer = setTimeout(() => setSplashComplete(true), 4000);
 
     return () => {
       clearTimeout(exitTimer);
       clearTimeout(splashTimer);
     };
+  }, [selectedCourtId]);
+
+  useEffect(() => {
+    if (!selectedCourtId || !splashVideoDone) return undefined;
+    setSplashExiting(true);
+    const completeTimer = setTimeout(() => setSplashComplete(true), 700);
+    return () => clearTimeout(completeTimer);
+  }, [selectedCourtId, splashVideoDone]);
+
+  useEffect(() => {
+    if (!selectedCourtId) return undefined;
+    const fallbackTimer = setTimeout(() => setSplashVideoDone(true), 30000);
+    return () => clearTimeout(fallbackTimer);
   }, [selectedCourtId]);
 
   useEffect(() => {
@@ -535,6 +625,12 @@ export default function BadmintonApp() {
   }, []);
 
   useEffect(() => {
+    const handleFullscreenChange = () => setIsCommunityFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
     const maintenanceRef = ref(db, 'systemStatus/maintenanceMode');
     return onValue(maintenanceRef, snapshot => {
       setMaintenanceMode(snapshot.val() === true);
@@ -547,6 +643,24 @@ export default function BadmintonApp() {
       setPaymentQrCode(typeof snapshot.val() === 'string' ? snapshot.val() : '');
     });
   }, []);
+
+  useEffect(() => {
+    const communityRef = ref(db, 'community/avatars');
+    return onValue(communityRef, snapshot => {
+      const data = snapshot.val() || {};
+      const remoteAvatars = Object.entries(data).map(([id, avatar]) => ({ id, ...avatar }));
+      setRemoteCommunityAvatars(remoteAvatars);
+    }, error => console.warn('Community avatars are using local fallback:', error.message));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('badbeaowCommunityLocalAvatars', JSON.stringify(localCommunityAvatars));
+  }, [localCommunityAvatars]);
+
+  useEffect(() => {
+    const list = communityChatListRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [displayedCommunityMessages, communityChatOpen]);
 
   useEffect(() => {
     if (!user || !selectedCourtId) {
@@ -988,12 +1102,92 @@ export default function BadmintonApp() {
 
   const selectCourt = (courtId) => {
     setSelectedCourtId(courtId);
+    setSplashComplete(false);
+    setSplashExiting(false);
+    setSplashVideoDone(false);
     setActiveTab('queue');
     setPlayers([]);
     setQueue([]);
     setCourt({ teamA: null, teamB: null });
     setDraftPair([null, null]);
     setAllCourtPlayers({});
+  };
+
+  const handleAddCommunityAvatar = async () => {
+    if (ownCommunityAvatar) {
+      showToast('เครื่องนี้มี Avatar อยู่แล้ว ลบตัวเดิมก่อนสร้างใหม่', 'error');
+      return;
+    }
+    const model = communityModelOptions[Math.floor(Math.random() * communityModelOptions.length)];
+    const avatarRef = push(ref(db, 'community/avatars'));
+    const avatarToAdd = {
+      ...communityAvatar,
+      name: communityAvatar.name.trim() || 'นักแบดสายฟ้า',
+      description: communityAvatar.description.trim() || 'ชอบตีเร็วและเล่นสนุก',
+      model,
+      ownerId: communityOwnerId,
+      createdAt: Date.now(),
+    };
+    // Show it right away; the server copy takes over once the write is confirmed.
+    setLocalCommunityAvatars(current => [...current, { ...avatarToAdd, id: avatarRef.key }]);
+    setCommunityOpen(true);
+    showToast('เพิ่มตัวละครเข้าคอมมูแล้ว', 'success');
+    try {
+      await set(avatarRef, avatarToAdd);
+      // Drop the local copy only once the server accepted it; an optimistic echo can still be rolled back.
+      setLocalCommunityAvatars(current => current.filter(avatar => avatar.id !== avatarRef.key));
+    } catch {
+      showToast('ตัวละครแสดงเฉพาะเครื่องนี้ (ต้อง publish rules ของ community ใน Firebase ก่อน)', 'error');
+    }
+  };
+
+  const handleDeleteCommunityAvatar = async () => {
+    if (!ownCommunityAvatar) return;
+    const avatarToDelete = ownCommunityAvatar;
+    setIsProcessing(true);
+    setLocalCommunityAvatars(current => current.filter(avatar => avatar.id !== avatarToDelete.id));
+    setRemoteCommunityAvatars(current => current.filter(avatar => avatar.id !== avatarToDelete.id));
+    setSelectedCommunityAvatar(current => (current?.id === avatarToDelete.id ? null : current));
+    try {
+      if (!avatarToDelete.id.startsWith('local-')) await remove(ref(db, `community/avatars/${avatarToDelete.id}`));
+      showToast('ลบ Avatar ของเครื่องนี้แล้ว', 'success');
+    } catch {
+      showToast('ลบในเครื่องแล้ว แต่ลบบนเซิร์ฟเวอร์ไม่สำเร็จ กรุณา publish rules ใหม่', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const toggleCommunityFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await communityShellRef.current?.requestFullscreen();
+      }
+    } catch {
+      showToast('เบราว์เซอร์ไม่อนุญาตโหมดเต็มจอ', 'error');
+    }
+  };
+
+  const handleCommunityAvatarSelect = useCallback(avatar => {
+    setSelectedCommunityAvatar(avatar);
+  }, []);
+
+  const handleSendCommunityMessage = async event => {
+    event.preventDefault();
+    const draft = communityChatDraft.trim();
+    if (!draft) return;
+    const messageRef = push(ref(db, 'community/chat'));
+    const message = { text: draft.slice(0, 180), sender: (ownCommunityAvatar?.name || 'ผู้เล่น').slice(0, 22), senderId: communityOwnerId, createdAt: Date.now() };
+    setCommunityChatDraft('');
+    setPendingCommunityMessages(current => [...current, { ...message, id: messageRef.key }]);
+    try {
+      await set(messageRef, message);
+      setPendingCommunityMessages(current => current.filter(pending => pending.id !== messageRef.key));
+    } catch {
+      setPendingCommunityMessages(current => current.map(pending => (pending.id === messageRef.key ? { ...pending, localOnly: true } : pending)));
+    }
   };
 
   const handleAddCourtAdmin = async (e) => {
@@ -1312,6 +1506,45 @@ export default function BadmintonApp() {
       newDraft[emptyIndex] = playerId;
       setDraftPair(newDraft);
     }
+  };
+
+  const pickRandomPlayer = (candidates, excludedIds = []) => {
+    const eligible = candidates.filter(player => !excludedIds.includes(player.id));
+    return eligible.length ? eligible[Math.floor(Math.random() * eligible.length)] : null;
+  };
+
+  const handleRandomPair = () => {
+    const first = pickRandomPlayer(availablePlayers);
+    const second = first ? pickRandomPlayer(availablePlayers, [first.id]) : null;
+    if (!first || !second) {
+      showToast('ต้องมีผู้เล่นว่างอย่างน้อย 2 คนเพื่อสุ่มจับคู่', 'error');
+      return;
+    }
+    setDraftPair([first.id, second.id]);
+    showToast(`สุ่มจับคู่ ${first.name} กับ ${second.name} แล้ว`, 'success');
+  };
+
+  const handleRandomOpponent = () => {
+    if (court.teamA || court.teamB) {
+      showToast('ต้องเคลียร์สนามก่อนสุ่มคู่แข่งจากคิว', 'error');
+      return;
+    }
+    if (queue.length < 2) {
+      showToast('ต้องมีคิวอย่างน้อย 2 คู่เพื่อสุ่มเจอกัน', 'error');
+      return;
+    }
+    const shuffledQueue = [...queue].sort(() => Math.random() - 0.5);
+    const [firstPair, secondPair] = shuffledQueue;
+    setIsProcessing(true);
+    update(ref(db), {
+      [`${courtRoot}/court`]: { teamA: firstPair.pair, teamB: secondPair.pair },
+      [`${courtRoot}/queue/${firstPair.id}`]: null,
+      [`${courtRoot}/queue/${secondPair.id}`]: null,
+    }).then(() => {
+      showToast(`สุ่มคู่แข่งในคิว: ${firstPair.pair.map(player => player.name).join(' & ')} พบ ${secondPair.pair.map(player => player.name).join(' & ')}`, 'success');
+    }).catch(() => {
+      showToast('สุ่มคู่แข่งจากคิวไม่สำเร็จ กรุณาลองใหม่', 'error');
+    }).finally(() => setIsProcessing(false));
   };
 
   const handleCreatePair = async () => {
@@ -1892,11 +2125,6 @@ export default function BadmintonApp() {
   if (!selectedCourtId) {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full bg-gray-50 text-gray-800 px-5 py-10 md:px-12 md:py-14 relative overflow-hidden">
-        <video autoPlay loop muted playsInline className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_28%]" aria-hidden="true">
-          <source src="/badbeaow_intro.mp4" type="video/mp4" />
-        </video>
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/95 via-white/68 to-white/15 md:from-white/90 md:via-white/35 md:to-transparent" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-slate-950/10" />
         {showSplash && (
           <div
             className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
@@ -1928,6 +2156,109 @@ export default function BadmintonApp() {
           <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">BADBEAOW</h1>
           <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>
         </div>
+
+        <section className="hidden">
+          <div className="relative min-h-[310px] overflow-hidden rounded-3xl bg-[#dff4f0] shadow-inner">
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/10"><div className="rounded-2xl bg-white/85 px-5 py-4 text-center shadow-lg backdrop-blur-sm"><div className="text-sm font-black text-slate-900">พื้นที่คอมมูสนามแบด</div><div className="mt-1 text-[11px] text-gray-500">กดปุ่มด้านข้างเพื่อเปิดหน้าคอมมูโดยเฉพาะ</div></div></div>
+            <div className="pointer-events-none absolute left-4 top-4 rounded-2xl bg-slate-950/75 px-3 py-2 text-white backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-xs font-black"><Activity size={15} className="text-emerald-300" /> สนามคอมมู 3D</div>
+              <div className="mt-1 text-[10px] text-white/70">ผู้เล่นในสนาม {communityAvatars.length} คน</div>
+            </div>
+          </div>
+          <div className="flex flex-col justify-center p-2 md:p-3">
+            <div className="flex items-center gap-2 text-xs font-black text-indigo-600"><Sparkles size={15} /> สร้างตัวละครของคุณ</div>
+            <h2 className="mt-2 text-xl font-black text-slate-900">เข้าคอมมูสนามแบด</h2>
+            <p className="mt-1 text-xs leading-5 text-gray-500">เพิ่มตัวละครก่อน แล้วเข้าชมคอมมูเพื่อดูผู้เล่นเดินเล่นและทำกิจกรรมในสนาม</p>
+            <label className="mt-4 text-[11px] font-bold text-gray-600">ชื่อที่แสดง<input value={communityAvatar.name} maxLength={22} onChange={event => setCommunityAvatar(current => ({ ...current, name: event.target.value || 'นักแบดสายฟ้า' }))} className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-indigo-400" placeholder="เช่น น้องลูกขนไก่" /></label>
+            <label className="mt-3 text-[11px] font-bold text-gray-600">คำอธิบายสั้น ๆ<input value={communityAvatar.description} maxLength={36} onChange={event => setCommunityAvatar(current => ({ ...current, description: event.target.value || 'ชอบตีเร็วและเล่นสนุก' }))} className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" placeholder="เช่น มือใหม่สายบุก" /></label>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[['shirt', 'เสื้อ'], ['pants', 'กางเกง'], ['hair', 'ผม']].map(([key, label]) => <label key={key} className="text-[10px] font-bold text-gray-600">{label}<input type="color" value={communityAvatar[key]} onChange={event => setCommunityAvatar(current => ({ ...current, [key]: event.target.value }))} className="mt-1 h-9 w-full cursor-pointer rounded-lg border border-gray-200 bg-white p-1" /></label>)}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-[10px] font-bold text-gray-600">เพศตัวละคร<select value={communityAvatar.gender} onChange={event => setCommunityAvatar(current => ({ ...current, gender: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs"><option>ชาย</option><option>หญิง</option><option>เพศทางเลือก</option></select></label>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={handleAddCommunityAvatar} disabled={isProcessing} className="rounded-xl bg-indigo-600 py-2.5 text-xs font-black text-white shadow-sm hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-50">{isProcessing ? 'กำลังเพิ่ม...' : 'เพิ่มเข้าคอมมู'}</button>
+              <button type="button" onClick={() => setCommunityOpen(true)} className="rounded-xl border border-indigo-200 bg-white py-2.5 text-xs font-black text-indigo-700 hover:bg-indigo-50">เปิดหน้าคอมมู</button>
+            </div>
+            {communityAvatars.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{communityAvatars.map(avatar => <span key={avatar.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{avatar.name}</span>)}</div>}
+          </div>
+        </section>
+
+        <button type="button" onClick={() => setCommunityOpen(true)} className="relative z-10 mx-auto mb-8 flex w-full max-w-5xl items-center justify-between rounded-3xl border border-white/70 bg-gradient-to-r from-slate-950 via-indigo-950 to-emerald-950 p-5 text-left text-white shadow-xl transition hover:-translate-y-0.5 hover:shadow-2xl md:p-7">
+          <span><span className="flex items-center gap-2 text-xs font-bold text-emerald-300"><Activity size={16} /> COMMUNITY SPORTS WORLD</span><strong className="mt-2 block text-xl font-black">เข้าสู่สนามคอมมู</strong><small className="mt-1 block text-xs text-white/65">สำรวจศูนย์กีฬา 3D ดูสนามแบด บาส ฟุตซอล โซนพัก และตัวละครผู้เล่น</small></span><ArrowLeft size={24} className="rotate-180 text-emerald-300" />
+        </button>
+
+        {communityOpen && (
+          <div className="fixed inset-0 z-[115] flex items-center justify-center bg-slate-950/70 p-0 backdrop-blur-sm">
+            <div ref={communityShellRef} className="relative flex h-screen w-full max-w-none flex-col overflow-hidden rounded-none bg-slate-100 shadow-2xl">
+              <style>{`:fullscreen .grid.min-h-0.flex-1 { display: block !important; padding: 0 !important; } :fullscreen .min-h-0.overflow-y-auto.rounded-3xl.bg-white.p-4.shadow-sm { display: none !important; } div.absolute.bottom-4[class~="left-1/2"] { display: none !important; }`}</style>
+              <button type="button" onClick={toggleCommunityFullscreen} className={`${isCommunityFullscreen ? 'fixed right-5 top-5 z-[140] block' : 'hidden'} rounded-xl bg-slate-950/85 px-4 py-2.5 text-xs font-black text-white shadow-xl backdrop-blur-sm hover:bg-slate-950`}>ออกจากเต็มจอ</button>
+              <div className={`${isCommunityFullscreen ? 'hidden' : 'flex'} items-center justify-between bg-slate-950 px-5 py-4 text-white md:px-7`}>
+                <div><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300">BADBEAOW COMMUNITY</div><h2 className="mt-1 text-lg font-black">สนามคอมมูของผู้เล่น</h2><p className="text-[11px] text-white/60">ผู้เล่นที่เพิ่มตัวละครจะปรากฏในพื้นที่นี้ให้ทุกคนเห็น</p></div>
+                <div className="flex items-center gap-2"><button type="button" onClick={toggleCommunityFullscreen} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/20">{isCommunityFullscreen ? 'ออกจากเต็มจอ' : 'เต็มจอ'}</button><button type="button" onClick={() => setCommunityOpen(false)} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/20"><X size={17} /></button></div>
+              </div>
+              <div className={`grid min-h-0 flex-1 gap-3 overflow-y-auto p-0 md:p-3 ${communityPanelOpen && !isCommunityFullscreen ? 'md:grid-cols-[1fr_340px]' : ''} ${isCommunityFullscreen ? 'block' : ''}`}>
+                <div className={`relative overflow-hidden bg-[#dff4f0] shadow-inner ${isCommunityFullscreen ? 'h-screen min-h-0 rounded-none' : 'min-h-[calc(100vh-120px)] rounded-3xl'}`}>
+                  <CommunityCourt avatars={communityAvatars} view={communityView} ownerId={communityOwnerId} onAvatarSelect={handleCommunityAvatarSelect} />
+                  <div className={`${isCommunityFullscreen ? 'hidden' : 'pointer-events-none absolute left-4 top-4 rounded-2xl bg-slate-950/75 px-3.5 py-2.5 text-white'}`}><div className="text-sm font-black">ศูนย์กีฬาคอมมู 3D</div><div className="mt-1 text-xs text-white/75">ออนไลน์ {communityAvatars.length} ตัวละคร · แตะตัวละครเพื่อดูรายละเอียด</div></div>
+                  <div className={`${isCommunityFullscreen ? 'hidden' : 'absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-2xl bg-slate-950/80 p-1.5 backdrop-blur-sm'}`}>{[['overview', 'ภาพรวม'], ['badminton', 'สนามแบด'], ['futsal', 'ฟุตซอล'], ['basketball', 'บาส'], ['rest', 'โซนพัก']].map(([key, label]) => <button key={key} type="button" onClick={() => setCommunityView(key)} className={`rounded-xl px-3 py-2 text-[10px] font-bold ${communityView === key ? 'bg-emerald-400 text-slate-950' : 'text-white/75 hover:bg-white/10'}`}>{label}</button>)}</div>
+                  {!communityPanelOpen && !isCommunityFullscreen && (
+                    <button type="button" onClick={() => setCommunityPanelOpen(true)} className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-2xl bg-white/95 px-3.5 py-2.5 text-xs font-black text-indigo-700 shadow-lg hover:bg-white"><PanelRightOpen size={16} /> สร้างตัวละคร / ผู้เล่น</button>
+                  )}
+                  {selectedCommunityAvatar && (() => {
+                    const selected = communityAvatars.find(avatar => avatar.id === selectedCommunityAvatar.id) || selectedCommunityAvatar;
+                    const badge = communityGenderStyle(selected.gender);
+                    const modelName = selected.model ? selected.model.split('/').pop().replace(/\.glb$/i, '').replace(/[-_]+/g, ' ') : 'ตัวละครพื้นฐาน';
+                    return (
+                      <div className="absolute left-1/2 top-20 z-30 w-[min(calc(100%-2rem),380px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
+                        <div className="flex items-start gap-3 bg-gradient-to-r from-slate-950 via-indigo-950 to-emerald-900 p-4 text-white">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl font-black shadow-inner" style={{ background: selected.shirt || '#3c83ee' }}>{(selected.name || '?').slice(0, 1)}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2"><h3 className="truncate text-lg font-black">{selected.name}</h3><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-base font-black text-white shadow-[0_0_12px_rgba(255,255,255,0.55)] ring-2 ring-white ${badge.className}`}>{badge.symbol}</span></div>
+                            <div className="mt-0.5 text-xs text-white/70">{selected.gender || 'ไม่ระบุเพศ'}{selected.ownerId === communityOwnerId ? ' · ตัวละครของคุณ' : ''}</div>
+                          </div>
+                          <button type="button" onClick={() => setSelectedCommunityAvatar(null)} aria-label="ปิดรายละเอียด" className="rounded-xl bg-white/10 p-2 hover:bg-white/20"><X size={16} /></button>
+                        </div>
+                        <div className="space-y-3 p-4">
+                          <p className="text-base leading-7 text-slate-700">{selected.description || 'ยังไม่มีคำอธิบาย'}</p>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-slate-400">ชุด</div><div className="mt-0.5 font-bold text-slate-800">{selected.outfit || 'เสื้อยืด + กางเกงขาสั้น'}</div></div>
+                            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-slate-400">โมเดล</div><div className="mt-0.5 truncate font-bold capitalize text-slate-800">{modelName}</div></div>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500">{[['shirt', 'เสื้อ'], ['pants', 'กางเกง'], ['hair', 'ผม'], ['skin', 'ผิว']].filter(([key]) => selected[key]).map(([key, label]) => <span key={key} className="flex items-center gap-1.5"><span className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ background: selected[key] }} />{label}</span>)}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  <div className="absolute bottom-5 right-5 z-20 w-[min(calc(100%-11.5rem),340px)] min-w-[200px]">
+                    {communityChatOpen ? (
+                      <div className="flex max-h-[45vh] flex-col overflow-hidden rounded-2xl bg-slate-950/80 text-white shadow-xl backdrop-blur-md">
+                        <div className="flex items-center justify-between border-b border-white/10 px-3 py-2"><span className="flex items-center gap-2 text-sm font-black"><MessageCircle size={16} className="text-emerald-300" /> แชทโลก</span><button type="button" onClick={() => setCommunityChatOpen(false)} aria-label="ย่อแชท" className="rounded-lg p-1 text-white/70 hover:bg-white/10"><ChevronDown size={16} /></button></div>
+                        <div ref={communityChatListRef} className="min-h-[90px] flex-1 space-y-1.5 overflow-y-auto px-3 py-2 text-sm leading-6">
+                          {displayedCommunityMessages.length ? displayedCommunityMessages.map(message => <div key={message.id} className="break-words"><span className={`font-bold ${message.senderId === communityOwnerId ? 'text-emerald-300' : 'text-sky-300'}`}>{message.sender}</span><span className="text-white/90">: {message.text}</span>{message.localOnly && <span className="ml-1 text-[10px] text-amber-300">(ยังไม่ถึงเซิร์ฟเวอร์)</span>}</div>) : <div className="py-3 text-center text-xs text-white/50">ยังไม่มีข้อความ ทักทายเพื่อน ๆ ได้เลย</div>}
+                        </div>
+                        <form onSubmit={handleSendCommunityMessage} className="flex gap-2 border-t border-white/10 p-2"><input value={communityChatDraft} maxLength={180} onChange={event => setCommunityChatDraft(event.target.value)} placeholder={ownCommunityAvatar ? `พิมพ์ในนาม ${ownCommunityAvatar.name}` : 'พิมพ์ข้อความ...'} className="min-w-0 flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/40 focus:bg-white/15" /><button type="submit" disabled={!communityChatDraft.trim()} aria-label="ส่งข้อความ" className="rounded-xl bg-emerald-400 px-3 text-slate-950 hover:bg-emerald-300 disabled:opacity-40"><Send size={16} /></button></form>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setCommunityChatOpen(true)} className="ml-auto flex items-center gap-2 rounded-full bg-slate-950/80 px-4 py-2.5 text-sm font-black text-white shadow-xl backdrop-blur-md hover:bg-slate-950"><MessageCircle size={16} className="text-emerald-300" /> แชทโลก{displayedCommunityMessages.length > 0 && <span className="rounded-full bg-emerald-400 px-2 text-xs text-slate-950">{displayedCommunityMessages.length}</span>}</button>
+                    )}
+                  </div>
+                </div>
+                {communityPanelOpen && (
+                  <div className="min-h-0 overflow-y-auto rounded-3xl bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between"><h3 className="text-base font-black text-slate-900">สร้างตัวละคร</h3><button type="button" onClick={() => setCommunityPanelOpen(false)} className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200"><PanelRightClose size={15} /> พับเก็บ</button></div>
+                    {ownCommunityAvatar ? <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3"><div className="text-sm font-bold text-emerald-800">เครื่องนี้มี Avatar แล้ว</div><div className="mt-1 text-xs text-emerald-700">{ownCommunityAvatar.name} · {ownCommunityAvatar.gender}</div><button type="button" onClick={handleDeleteCommunityAvatar} disabled={isProcessing} className="mt-3 w-full rounded-xl bg-red-500 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isProcessing ? 'กำลังลบ...' : 'ลบ Avatar ของฉัน'}</button></div> : <><div className="mt-3 space-y-2"><input value={communityAvatar.name} maxLength={22} onChange={event => setCommunityAvatar(current => ({ ...current, name: event.target.value }))} placeholder="ชื่อที่แสดง" className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" /><input value={communityAvatar.description} maxLength={36} onChange={event => setCommunityAvatar(current => ({ ...current, description: event.target.value }))} placeholder="คำอธิบายสั้น ๆ" className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" /><select value={communityAvatar.gender} onChange={event => setCommunityAvatar(current => ({ ...current, gender: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"><option>ชาย</option><option>หญิง</option><option>เพศทางเลือก</option></select></div><button type="button" onClick={handleAddCommunityAvatar} className="mt-3 w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">เพิ่มตัวละครเข้าคอมมู</button></>}
+                    <div className="mt-5 border-t border-gray-100 pt-4">
+                      <h3 className="text-base font-black text-slate-900">ผู้เล่นในคอมมู ({communityAvatars.length})</h3>
+                      <div className="mt-3 space-y-2">{communityAvatars.length ? communityAvatars.map(avatar => { const badge = communityGenderStyle(avatar.gender); return <button type="button" key={avatar.id} onClick={() => setSelectedCommunityAvatar(avatar)} className={`block w-full rounded-2xl p-3 text-left transition hover:bg-indigo-50 ${selectedCommunityAvatar?.id === avatar.id ? 'bg-indigo-50 ring-2 ring-indigo-300' : 'bg-slate-50'}`}><div className="flex items-center gap-2"><span className="truncate text-sm font-bold text-slate-900">{avatar.name}</span><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-black text-white ring-2 ring-white ${badge.className}`}>{badge.symbol}</span>{avatar.ownerId === communityOwnerId && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">คุณ</span>}</div><div className="mt-1 text-sm leading-6 text-gray-600">{avatar.description}</div></button>; }) : <div className="rounded-2xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">ยังไม่มีตัวละคร</div>}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="relative z-10 mx-auto max-w-7xl space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 lg:max-w-5xl">
           {visibleCourts.map(courtItem => (
@@ -2005,15 +2336,18 @@ export default function BadmintonApp() {
         <div
           className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br ${selectedCourt.accent} flex items-center justify-center px-6 text-white overflow-hidden`}
         >
-          <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-purple-400/20 blur-3xl" />
-          <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
-          <div className="splash-content relative w-full text-center animate-in fade-in zoom-in-95 duration-500">
+          <video autoPlay muted playsInline onEnded={() => setSplashVideoDone(true)} onError={() => setSplashVideoDone(true)} className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_28%]" aria-hidden="true">
+            <source src="/badbeaow_intro.mp4" type="video/mp4" />
+          </video>
+          <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${selectedCourt.accent} opacity-75`} />
+          <div className="pointer-events-none absolute inset-0 bg-slate-950/25" />
+          <div className="splash-content relative z-10 w-full text-center animate-in fade-in zoom-in-95 duration-500">
             <h1 className="splash-title text-3xl font-black tracking-[0.18em]">
               {'BADBEAOW'.split('').map((letter, index) => (
                 <span className={`splash-letter ${letter === 'A' ? 'splash-a-glow' : ''}`} key={`${letter}-${index}`}>{letter}</span>
               ))}
             </h1>
-            <p className="mt-2 text-sm text-purple-200">ระบบจัดการคิวตีแบด</p>
+              <p className="mt-2 text-sm text-white/80">กำลังเข้าสู่ {selectedCourt.name}</p>
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-white/60">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
               กำลังเตรียมระบบ...
@@ -2220,12 +2554,22 @@ export default function BadmintonApp() {
 
             {/* จับคู่เตรียมลงสนาม */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-              <h2 className="text-[15px] font-bold text-gray-800 mb-4 flex items-center justify-between">
-                จับคู่เตรียมลงสนาม
-                <span className="text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
-                  {draftPair.filter(s => s !== null).length}/2 คน
-                </span>
-              </h2>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-[15px] font-bold text-gray-800">จับคู่เตรียมลงสนาม</h2>
+                  <span className="mt-1 inline-block text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                    {draftPair.filter(s => s !== null).length}/2 คน
+                  </span>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={handleRandomPair} disabled={isProcessing || availablePlayers.length < 2} className="rounded-xl bg-purple-600 px-3 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-40" title="สุ่มผู้เล่น 2 คนเป็นคู่">
+                    สุ่มจับคู่
+                  </button>
+                  <button type="button" onClick={handleRandomOpponent} disabled={isProcessing || queue.length < 2 || Boolean(court.teamA || court.teamB)} className="rounded-xl bg-orange-500 px-3 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40" title="สุ่ม 2 คู่จากคิวมาเจอกัน">
+                    สุ่มคู่แข่งในคิว
+                  </button>
+                </div>
+              </div>
 
               <div className="flex gap-3 mb-4">
                 {[0, 1].map(idx => (
