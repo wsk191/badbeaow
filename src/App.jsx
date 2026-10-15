@@ -13,6 +13,7 @@ import {
     onAuthStateChanged 
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction } from 'firebase/database';
+import ExercisePlanner from './components/ExercisePlanner';
 
 const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 ชั่วโมง
 
@@ -182,6 +183,8 @@ export default function BadmintonApp() {
   const [searchDraftQuery, setSearchDraftQuery] = useState('');
   const [leaderboardScope, setLeaderboardScope] = useState('court');
   const [todayKey, setTodayKey] = useState(getTodayKey);
+
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
 
   const selectedCourt = COURTS.find(courtItem => courtItem.id === selectedCourtId);
   const scheduledMaintenanceMode = isMaintenanceScheduleActive(maintenanceSchedule, new Date(scheduleNow));
@@ -523,6 +526,12 @@ export default function BadmintonApp() {
       setTodayKey(previousDateKey => previousDateKey === nextDateKey ? previousDateKey : nextDateKey);
     }, 60000);
     return () => clearInterval(dateTimer);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -1610,7 +1619,7 @@ export default function BadmintonApp() {
   // Maintenance screen
   if (!loading && effectiveMaintenanceMode && userRole !== 'superAdmin') {
     return (
-      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen max-w-md mx-auto relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-center px-6">
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-center px-6">
         <div className="relative w-full text-center">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-amber-300/30 bg-amber-300/10 text-amber-300 shadow-[0_0_45px_rgba(251,191,36,0.18)]">
             <Wrench size={38} className="animate-pulse" />
@@ -1627,7 +1636,7 @@ export default function BadmintonApp() {
 
         {showLoginModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-full max-w-lg md:max-w-xl rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl animate-in zoom-in-95 duration-200">
               <h3 className="mb-1 text-lg font-bold">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="mb-4 text-xs text-gray-500">สำหรับ SuperAdmin เพื่อเปิดระบบกลับมาใช้งาน</p>
               {loginError && <div className="mb-3 rounded-xl bg-red-50 p-3 text-center text-xs font-medium text-red-600">{loginError}</div>}
@@ -1655,7 +1664,7 @@ export default function BadmintonApp() {
   // SuperAdmin Control Center
   if (!selectedCourtId && user?.email && userRole === 'superAdmin') {
     return (
-      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-slate-50 text-gray-800 max-w-md mx-auto relative shadow-2xl overflow-x-hidden pb-6">
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full bg-slate-50 text-gray-800 relative overflow-x-hidden pb-6">
         <div className={`fixed left-1/2 top-6 z-[80] transition-all duration-300 ease-out ${toast.message ? 'pointer-events-auto translate-x-[-50%] scale-100 opacity-100' : 'pointer-events-none translate-x-[-50%] -translate-y-3 scale-95 opacity-0'}`}>
           <div className={`whitespace-nowrap rounded-full px-5 py-3 text-xs font-semibold text-white shadow-xl ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
             {toast.message}
@@ -1685,7 +1694,7 @@ export default function BadmintonApp() {
         </header>
 
         {superAdminSection === 'dashboard' ? (
-          <main className="p-4 space-y-4">
+          <main className="mx-auto max-w-7xl p-4 space-y-4 md:p-8">
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: 'ผู้เล่นทั้งหมด', value: dashboardSummary.playerCount, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -1791,7 +1800,10 @@ export default function BadmintonApp() {
             </div>
           </main>
         ) : superAdminSection === 'exercise' ? (
-          <main className="p-4 space-y-4">
+          <>
+            <div className="mx-auto max-w-7xl p-4 md:p-8"><ExercisePlanner isAdmin /></div>
+            <div className="hidden">
+          <main className="mx-auto max-w-7xl p-4 space-y-4 md:p-8">
             <section className="rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950 p-5 text-white shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1855,6 +1867,8 @@ export default function BadmintonApp() {
               </div>
             </section>
           </main>
+            </div>
+          </>
         ) : (
           <main className="p-4 space-y-4">
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
@@ -1877,7 +1891,12 @@ export default function BadmintonApp() {
   // หน้าเลือกคอร์ดทั่วไป
   if (!selectedCourtId) {
     return (
-      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen bg-gray-50 text-gray-800 max-w-md mx-auto px-5 py-10 relative overflow-hidden">
+      <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full bg-gray-50 text-gray-800 px-5 py-10 md:px-12 md:py-14 relative overflow-hidden">
+        <video autoPlay loop muted playsInline className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_28%]" aria-hidden="true">
+          <source src="/badbeaow_intro.mp4" type="video/mp4" />
+        </video>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/95 via-white/68 to-white/15 md:from-white/90 md:via-white/35 md:to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-slate-950/10" />
         {showSplash && (
           <div
             className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-950 flex items-center justify-center px-6 text-white overflow-hidden`}
@@ -1899,8 +1918,8 @@ export default function BadmintonApp() {
           </div>
         )}
 
-        <div className="text-center pt-8 pb-6">
-          <div className="flex justify-center mb-5">
+        <div className="relative z-10 mx-auto max-w-7xl pt-8 pb-6 text-center md:text-left">
+          <div className="flex justify-center mb-5 md:justify-start">
             <div className="relative flex items-center justify-center w-24 h-24 rounded-[2rem] bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-700 shadow-xl shadow-indigo-200 transform -rotate-6">
               <div className="absolute inset-0 rounded-[2rem] bg-white/20 backdrop-blur-sm border border-white/30" />
               <Swords size={48} className="text-white drop-shadow-md relative z-10" />
@@ -1910,7 +1929,7 @@ export default function BadmintonApp() {
           <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>
         </div>
 
-        <div className="space-y-3">
+        <div className="relative z-10 mx-auto max-w-7xl space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 lg:max-w-5xl">
           {visibleCourts.map(courtItem => (
             <button
               key={courtItem.id}
@@ -1926,6 +1945,7 @@ export default function BadmintonApp() {
           ))}
         </div>
 
+        <div className="relative z-10 mx-auto max-w-7xl md:max-w-5xl">
         <button
           onClick={() => setShowGuide(true)}
           className="w-full mt-5 bg-white border border-purple-100 text-purple-700 rounded-2xl py-3.5 font-bold text-sm shadow-sm hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
@@ -1948,10 +1968,11 @@ export default function BadmintonApp() {
             <ShieldCheck size={18} /> เข้าสู่ระบบแอดมิน
           </button>
         )}
+        </div>
 
         {showLoginModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl animate-in zoom-in-95 duration-200">
               <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
               <p className="text-xs text-gray-500 mb-4">ระบบจะจำการล็อกอินไว้ 1 ชั่วโมง</p>
               {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
@@ -1978,7 +1999,7 @@ export default function BadmintonApp() {
 
   // หน้าจอจัดการคอร์ดที่เลือก
   return (
-    <div style={{ fontFamily: "'Prompt', sans-serif" }} className={`court-theme-${selectedCourtId} min-h-screen bg-gray-50/50 text-gray-800 pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden selection:bg-purple-200`}>
+    <div style={{ fontFamily: "'Prompt', sans-serif" }} className={`court-theme-${selectedCourtId} min-h-screen bg-gray-50/50 text-gray-800 pb-24 ${isDesktop ? 'max-w-6xl mx-auto pt-14 shadow-none' : 'max-w-md mx-auto shadow-2xl'} relative overflow-x-hidden selection:bg-purple-200`}>
       {/* Splash Screen */}
       {showSplash && (
         <div
@@ -2004,7 +2025,7 @@ export default function BadmintonApp() {
       {/* โฆษณา เจ๊เนยสั่งลุย (สนาม 1) */}
       {showCourtOneAd && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="relative w-full max-w-sm overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-300 via-orange-500 to-red-600 p-1 shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="relative w-full max-w-lg md:max-w-xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-amber-300 via-orange-500 to-red-600 p-1 shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="relative overflow-hidden rounded-[1.8rem] bg-white px-6 py-9 text-center">
               <button
                 onClick={() => setShowCourtOneAd(false)}
@@ -2036,7 +2057,7 @@ export default function BadmintonApp() {
       </div>
 
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md text-gray-800 pt-10 pb-3 px-6 sticky top-0 z-20 border-b border-gray-100 flex justify-between items-center">
+      <header className={`bg-white/80 backdrop-blur-md text-gray-800 ${isDesktop ? 'pt-5 px-8' : 'pt-10 px-6'} pb-3 sticky top-0 z-20 border-b border-gray-100 flex justify-between items-center`}>
         <div className="flex items-center gap-2">
           <button onClick={() => setSelectedCourtId(null)} className="p-1.5 -ml-2 text-gray-400 hover:text-purple-600 transition-colors" title="กลับไปเลือกคอร์ด">
             <ArrowLeft size={19} />
@@ -2067,6 +2088,7 @@ export default function BadmintonApp() {
 
       {/* Main Content Area */}
       <main className="min-h-[calc(100vh-160px)]">
+        {activeTab === 'exercise' && <div className="p-4 md:p-8"><ExercisePlanner isAdmin={isAdmin} /></div>}
         {/* TAB: DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="p-4 space-y-5">
@@ -2667,7 +2689,7 @@ export default function BadmintonApp() {
       {/* POPUP MODAL: ตรวจสอบสลิป & ประวัติการจ่ายเงินสำหรับแอดมิน */}
       {showFinanceModal && isAdmin && (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
             {/* Header */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -2842,7 +2864,7 @@ export default function BadmintonApp() {
       {/* MODAL: ขยายดูรูปสลิป */}
       {previewSlipImage && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setPreviewSlipImage(null)}>
-          <div className="relative max-w-sm w-full bg-white rounded-3xl overflow-hidden p-2" onClick={e => e.stopPropagation()}>
+          <div className="relative max-w-2xl w-full bg-white rounded-3xl overflow-hidden p-2" onClick={e => e.stopPropagation()}>
             <button onClick={() => setPreviewSlipImage(null)} className="absolute right-3 top-3 z-10 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70">
               <X size={18} />
             </button>
@@ -2854,7 +2876,7 @@ export default function BadmintonApp() {
       {/* POPUP สำหรับผู้เล่นแจ้งโอนเงิน */}
       {showPaymentForm && (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-5 backdrop-blur-sm">
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="relative w-full max-w-lg md:max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
             <button onClick={() => setShowPaymentForm(false)} className="absolute right-4 top-4 rounded-full bg-gray-100 p-2 text-gray-500 hover:bg-gray-200"><X size={19} /></button>
             <h2 className="text-lg font-black text-gray-800">แจ้งโอนเงิน</h2>
             <p className="mt-1 text-xs text-gray-500">สแกนจ่ายแล้วแนบรูปสลิปด้านล่าง</p>
@@ -2871,7 +2893,7 @@ export default function BadmintonApp() {
       )}
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-30 pb-safe">
+      <nav className={`fixed z-30 bg-white border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-safe ${isDesktop ? 'left-1/2 top-0 hidden w-full max-w-6xl -translate-x-1/2 border-b md:block' : 'bottom-0 w-full max-w-md border-t'}`}>
         <div className="flex justify-between px-2 py-3">
           <button onClick={() => setActiveTab('queue')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'queue' ? 'text-purple-600 font-bold' : 'text-gray-400'}`}>
             <Swords size={22} />
@@ -2892,6 +2914,10 @@ export default function BadmintonApp() {
               <span className="absolute top-0 right-3 w-2 h-2 bg-red-500 rounded-full animate-ping" />
             )}
           </button>
+          <button onClick={() => setActiveTab('exercise')} className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'exercise' ? 'text-orange-600 font-bold' : 'text-gray-400'}`}>
+            <Dumbbell size={22} />
+            <span className="text-[10px]">ออกกำลัง</span>
+          </button>
           <button onClick={() => setShowMoreMenu(prev => !prev)} className={`flex flex-col items-center gap-1 flex-1 ${showMoreMenu ? 'text-purple-600 font-bold' : 'text-gray-400'}`}>
             <MoreHorizontal size={22} />
             <span className="text-[10px]">เพิ่มเติม</span>
@@ -2907,6 +2933,12 @@ export default function BadmintonApp() {
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${activeTab === 'dashboard' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <LayoutDashboard size={16} /> ภาพรวม
+          </button>
+          <button
+            onClick={() => { setActiveTab('exercise'); setShowMoreMenu(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${activeTab === 'exercise' ? 'bg-orange-50 text-orange-600' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <Dumbbell size={16} /> แผนออกกำลังกาย
           </button>
           {userRole === 'superAdmin' && (
             <button
@@ -2952,7 +2984,7 @@ export default function BadmintonApp() {
       {/* Delete Queue Modal */}
       {queueToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบคิวนี้ใช่หรือไม่?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อคู่นี้จะถูกนำออกจากคิวรอ</p>
             <div className="flex gap-3">
@@ -2966,7 +2998,7 @@ export default function BadmintonApp() {
       {/* Delete All Queue Modal */}
       {showDeleteAllQueueModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-2 border-red-500">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl border-2 border-red-500">
             <div className="flex items-center gap-3 mb-3 text-red-600">
               <AlertTriangle size={24} />
               <h3 className="text-lg font-black">ลบคู่ในคิวทั้งหมด?</h3>
@@ -2983,7 +3015,7 @@ export default function BadmintonApp() {
       {/* Delete Player Modal */}
       {playerToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-2">ลบผู้เล่นนี้ออก?</h3>
             <p className="text-sm text-gray-500 mb-6">รายชื่อนี้จะหายไปจากระบบถาวร</p>
             <div className="flex gap-3">
@@ -2997,7 +3029,7 @@ export default function BadmintonApp() {
       {/* Delete All Players Modal */}
       {showDeleteAllPlayersModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-2 border-red-500">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl border-2 border-red-500">
             <div className="flex items-center gap-3 mb-3 text-red-600">
                 <AlertTriangle size={24} />
                 <h3 className="text-lg font-black">อันตราย! ล้างระบบทั้งหมด?</h3>
@@ -3014,7 +3046,7 @@ export default function BadmintonApp() {
       {/* Edit Player Modal */}
       {playerToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-2">แก้ไขชื่อผู้เล่น</h3>
             <div className="space-y-4">
               <input 
@@ -3035,7 +3067,7 @@ export default function BadmintonApp() {
       {/* Modal คู่มือการใช้งาน */}
       {showGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
             <div className={`bg-gradient-to-br ${selectedCourt.accent} p-5 text-white flex items-start justify-between`}>
               <div>
                 <div className="flex items-center gap-2 mb-1"><BookOpen size={21} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
@@ -3068,7 +3100,7 @@ export default function BadmintonApp() {
       {/* Modal คู่มือแอดมิน */}
       {showAdminGuide && isAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl animate-in zoom-in-95 duration-200">
             <div className={`flex items-start justify-between bg-gradient-to-br ${selectedCourt.accent} p-5 text-white`}>
               <div><div className="mb-1 flex items-center gap-2"><ShieldCheck size={21} /><h2 className="text-lg font-bold">คู่มือแอดมิน</h2></div><p className="text-xs text-white/75">สิทธิ์และขั้นตอนการดูแลสนาม</p></div>
               <button onClick={() => setShowAdminGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือแอดมิน"><X size={20} /></button>
@@ -3084,7 +3116,7 @@ export default function BadmintonApp() {
       {/* Admin Login Modal (เรียกได้ทั้งจากหน้าแต่ละสนาม) */}
       {showLoginModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg md:max-w-xl shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold text-gray-800 mb-1">เข้าสู่ระบบผู้ดูแล</h3>
             <p className="text-xs text-gray-500 mb-4">ระบบจะจำการล็อกอินไว้ 1 ชั่วโมง</p>
             {loginError && <div className="mb-3 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium text-center">{loginError}</div>}
