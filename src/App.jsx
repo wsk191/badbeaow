@@ -12,11 +12,17 @@ import {
     signOut, 
     onAuthStateChanged 
 } from 'firebase/auth';
-import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast } from 'firebase/database';
+import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast, orderByChild, endAt } from 'firebase/database';
 import ExercisePlanner from './components/ExercisePlanner';
 import CommunityCourt from './components/CommunityCourt';
 
 const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 ชั่วโมง
+const COMMUNITY_TTL_MS = 2 * 60 * 60 * 1000; // Avatar อยู่ได้ 2 ชั่วโมง, แชทล้างทุก 2 ชั่วโมง
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
+// Start of the current 2-hour chat window, aligned to even hours in Bangkok time (00:00, 02:00, ...).
+// Must match the formula in database.rules.json.
+const getChatWindowStart = (now = Date.now()) => now - ((now + BANGKOK_OFFSET_MS) % COMMUNITY_TTL_MS);
+const isCommunityAvatarExpired = (avatar, now = Date.now()) => !avatar.createdAt || avatar.createdAt <= now - COMMUNITY_TTL_MS;
 
 const COURTS = [
   { id: 'court-1', name: 'คอร์ด 1', accent: 'from-violet-700 to-indigo-900', solid: 'bg-violet-600', text: 'text-violet-600' },
@@ -110,6 +116,7 @@ export default function BadmintonApp() {
   const [managedAdminIds, setManagedAdminIds] = useState({});
   const [assignedCourtIds, setAssignedCourtIds] = useState([]);
   const [superAdminSection, setSuperAdminSection] = useState('dashboard');
+  const [superAdminShowHome, setSuperAdminShowHome] = useState(false);
   const [exerciseProfile, setExerciseProfile] = useState({ age: '', weight: '', height: '', level: 'มือใหม่' });
   const [superAdminCourtId, setSuperAdminCourtId] = useState('court-1');
   const [expandedCourtIds, setExpandedCourtIds] = useState({});
@@ -180,10 +187,12 @@ export default function BadmintonApp() {
       return [];
     }
   });
+  const [communityClock, setCommunityClock] = useState(() => Date.now());
   const communityAvatars = useMemo(() => {
     const remoteIds = new Set(remoteCommunityAvatars.map(avatar => avatar.id));
-    return [...remoteCommunityAvatars, ...localCommunityAvatars.filter(avatar => !remoteIds.has(avatar.id))];
-  }, [remoteCommunityAvatars, localCommunityAvatars]);
+    return [...remoteCommunityAvatars, ...localCommunityAvatars.filter(avatar => !remoteIds.has(avatar.id))]
+      .filter(avatar => !isCommunityAvatarExpired(avatar, communityClock));
+  }, [remoteCommunityAvatars, localCommunityAvatars, communityClock]);
   const [communityPanelOpen, setCommunityPanelOpen] = useState(true);
   const [communityChatOpen, setCommunityChatOpen] = useState(true);
   const [pendingCommunityMessages, setPendingCommunityMessages] = useState([]);
@@ -226,10 +235,12 @@ export default function BadmintonApp() {
   const ownCommunityAvatar = communityAvatars.find(avatar => avatar.ownerId === communityOwnerId);
   const displayedCommunityMessages = useMemo(() => {
     const remoteIds = new Set(communityMessages.map(message => message.id));
+    const windowStart = getChatWindowStart(communityClock);
     return [...communityMessages, ...pendingCommunityMessages.filter(message => !remoteIds.has(message.id))]
+      .filter(message => (message.createdAt || 0) >= windowStart)
       .sort((first, second) => (first.createdAt || 0) - (second.createdAt || 0))
       .slice(-60);
-  }, [communityMessages, pendingCommunityMessages]);
+  }, [communityMessages, pendingCommunityMessages, communityClock]);
   const communityGenderStyle = gender => {
     if (gender === 'หญิง') return { symbol: '♀', className: 'bg-pink-500' };
     if (gender === 'เพศทางเลือก') return { symbol: '⚧', className: 'bg-gradient-to-br from-rose-500 via-amber-400 to-sky-500' };
@@ -656,6 +667,37 @@ export default function BadmintonApp() {
   useEffect(() => {
     localStorage.setItem('badbeaowCommunityLocalAvatars', JSON.stringify(localCommunityAvatars));
   }, [localCommunityAvatars]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCommunityClock(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Clear avatars 2 hours after creation and chat from previous 2-hour windows.
+  // Any signed-in client may do this; the database rules only allow deleting expired entries.
+  useEffect(() => {
+    setLocalCommunityAvatars(current => {
+      const kept = current.filter(avatar => !isCommunityAvatarExpired(avatar, communityClock));
+      return kept.length === current.length ? current : kept;
+    });
+    setPendingCommunityMessages(current => {
+      const windowStart = getChatWindowStart(communityClock);
+      const kept = current.filter(message => (message.createdAt || 0) >= windowStart);
+      return kept.length === current.length ? current : kept;
+    });
+    if (!user) return;
+    remoteCommunityAvatars
+      .filter(avatar => isCommunityAvatarExpired(avatar, communityClock))
+      .forEach(avatar => remove(ref(db, `community/avatars/${avatar.id}`)).catch(() => {}));
+    const oldChatQuery = query(ref(db, 'community/chat'), orderByChild('createdAt'), endAt(getChatWindowStart(communityClock) - 1));
+    get(oldChatQuery)
+      .then(snapshot => {
+        const removals = {};
+        snapshot.forEach(child => { removals[child.key] = null; });
+        return Object.keys(removals).length ? update(ref(db, 'community/chat'), removals) : undefined;
+      })
+      .catch(() => {});
+  }, [user, remoteCommunityAvatars, communityClock]);
 
   useEffect(() => {
     const list = communityChatListRef.current;
@@ -1895,7 +1937,7 @@ export default function BadmintonApp() {
   }
 
   // SuperAdmin Control Center
-  if (!selectedCourtId && user?.email && userRole === 'superAdmin') {
+  if (!selectedCourtId && user?.email && userRole === 'superAdmin' && !superAdminShowHome) {
     return (
       <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full bg-slate-50 text-gray-800 relative overflow-x-hidden pb-6">
         <div className={`fixed left-1/2 top-6 z-[80] transition-all duration-300 ease-out ${toast.message ? 'pointer-events-auto translate-x-[-50%] scale-100 opacity-100' : 'pointer-events-none translate-x-[-50%] -translate-y-3 scale-95 opacity-0'}`}>
@@ -1909,9 +1951,14 @@ export default function BadmintonApp() {
               <div className="text-[11px] text-indigo-300 font-semibold tracking-wide">BADBEAOW CONTROL CENTER</div>
               <div className="text-sm font-bold text-white">ศูนย์ควบคุมระบบกลาง (SuperAdmin)</div>
             </div>
-            <button onClick={() => handleLogout(false)} className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl text-white" title="ออกจากระบบ">
-              <LogOut size={18} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSuperAdminShowHome(true)} className="bg-white/10 hover:bg-white/20 px-3 py-2.5 rounded-xl text-xs font-bold text-white" title="ดูหน้าแรก">
+                หน้าแรก
+              </button>
+              <button onClick={() => handleLogout(false)} className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl text-white" title="ออกจากระบบ">
+                <LogOut size={18} />
+              </button>
+            </div>
           </div>
           <div className="mt-4 flex gap-2">
             <button onClick={() => setSuperAdminSection('dashboard')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'dashboard' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
@@ -2283,6 +2330,15 @@ export default function BadmintonApp() {
         >
           <BookOpen size={18} /> คู่มือการใช้งาน
         </button>
+
+        {userRole === 'superAdmin' && user?.email && (
+          <button
+            onClick={() => setSuperAdminShowHome(false)}
+            className="w-full mt-6 bg-slate-950 hover:bg-slate-800 text-white rounded-2xl py-3.5 font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2"
+          >
+            <ShieldCheck size={18} /> กลับศูนย์ควบคุม SuperAdmin
+          </button>
+        )}
 
         {isLoggedInAdmin ? (
           <button

@@ -43,16 +43,16 @@
       "avatars": {
         ".read": "auth != null",
         "$avatarId": {
-          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['name', 'description', 'shirt', 'pants', 'hair', 'skin', 'shoes', 'face', 'hairStyle', 'ownerId'])) || (data.exists() && !newData.exists() && data.child('ownerId').val() === auth.uid))",
-          ".validate": "newData.child('name').isString() && newData.child('description').isString() && newData.child('shirt').isString() && newData.child('pants').isString() && newData.child('hair').isString() && newData.child('skin').isString() && newData.child('shoes').isString() && newData.child('face').isString() && newData.child('hairStyle').isString() && newData.child('ownerId').isString()"
+          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['name', 'description', 'shirt', 'pants', 'hair', 'skin', 'shoes', 'face', 'hairStyle', 'ownerId', 'createdAt'])) || (data.exists() && !newData.exists() && (data.child('ownerId').val() === auth.uid || !data.child('createdAt').exists() || data.child('createdAt').val() <= now - 7200000)))",
+          ".validate": "newData.child('name').isString() && newData.child('description').isString() && newData.child('shirt').isString() && newData.child('pants').isString() && newData.child('hair').isString() && newData.child('skin').isString() && newData.child('shoes').isString() && newData.child('face').isString() && newData.child('hairStyle').isString() && newData.child('ownerId').isString() && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now + 60000"
         }
       },
       "chat": {
         ".read": "auth != null",
         ".indexOn": ["createdAt"],
         "$messageId": {
-          ".write": "auth != null && !data.exists()",
-          ".validate": "newData.hasChildren(['text', 'sender', 'senderId', 'createdAt']) && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 180 && newData.child('sender').isString() && newData.child('sender').val().length <= 22 && newData.child('senderId').isString() && newData.child('createdAt').isNumber()"
+          ".write": "auth != null && (!data.exists() || (!newData.exists() && data.child('createdAt').val() < now - ((now + 25200000) % 7200000)))",
+          ".validate": "newData.child('createdAt').val() <= now + 60000 && newData.hasChildren(['text', 'sender', 'senderId', 'createdAt']) && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 180 && newData.child('sender').isString() && newData.child('sender').val().length <= 22 && newData.child('senderId').isString() && newData.child('createdAt').isNumber()"
         }
       }
     },
