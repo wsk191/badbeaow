@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
     Users, Wallet, ArrowUp, ArrowDown, ArrowLeft, Plus, Trash2, Swords,
     UserPlus, Coins, ShieldCheck, Trophy, 
-    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench, QrCode, History, Eye, Clock
+    X, Receipt, Check, Lock, LogOut, Mail, Key, Search, AlertTriangle, Minus, Edit2, GripVertical, LayoutDashboard, MoreHorizontal, ChevronDown, BookOpen, Wrench, QrCode, History, Eye, Clock, Dumbbell, CalendarDays, Sparkles, Target, Activity
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -65,6 +65,40 @@ const isMaintenanceScheduleActive = (schedule, date = new Date()) => {
   return start < end ? now >= start && now < end : now >= start || now < end;
 };
 
+const WORKOUT_TYPES = [
+  { key: 'footwork', label: 'ฟุตเวิร์ก', icon: '↗', color: 'bg-orange-50 text-orange-700 border-orange-100' },
+  { key: 'strength', label: 'สร้างความแข็งแรง', icon: '▦', color: 'bg-blue-50 text-blue-700 border-blue-100' },
+  { key: 'cardio', label: 'คาร์ดิโอ', icon: '◒', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  { key: 'mobility', label: 'ยืดเหยียด/ฟื้นฟู', icon: '◌', color: 'bg-violet-50 text-violet-700 border-violet-100' },
+  { key: 'rest', label: 'พักฟื้น', icon: '•', color: 'bg-slate-50 text-slate-600 border-slate-100' },
+];
+
+const getExercisePlan = (profile, date) => {
+  const day = date.getDate();
+  const weekDay = date.getDay();
+  const bmi = Number(profile.height) > 0 ? Number(profile.weight) / ((Number(profile.height) / 100) ** 2) : 0;
+  const isOlder = Number(profile.age) >= 40;
+  const isBeginner = profile.level === 'มือใหม่';
+  const cycle = day % 7;
+  const typeKey = weekDay === 0 || cycle === 6
+    ? 'rest'
+    : cycle === 1 || cycle === 4
+      ? 'footwork'
+      : cycle === 2 || cycle === 5
+        ? 'strength'
+        : cycle === 3 ? 'cardio' : 'mobility';
+  const duration = typeKey === 'rest' ? 0 : Math.max(20, (isOlder || isBeginner ? 25 : 35) - (bmi >= 27 ? 5 : 0));
+  const intensity = typeKey === 'rest' ? 'พักเต็มที่' : isOlder || isBeginner ? 'เบา-ปานกลาง' : 'ปานกลาง';
+  const details = {
+    footwork: 'ก้าว 6 จุด + shadow badminton 4 รอบ',
+    strength: 'สควอต, lunge, plank อย่างละ 3 เซต',
+    cardio: 'เดินเร็วหรือปั่นจักรยาน สลับเร็ว-ช้า',
+    mobility: 'ยืดสะโพก น่อง ไหล่ และหลัง 15 นาที',
+    rest: 'พัก ดื่มน้ำ และนอนให้ครบ 7-9 ชั่วโมง',
+  };
+  return { typeKey, duration, intensity, detail: details[typeKey] };
+};
+
 export default function BadmintonApp() {
   const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [activeTab, setActiveTab] = useState('queue');
@@ -74,6 +108,7 @@ export default function BadmintonApp() {
   const [managedAdminIds, setManagedAdminIds] = useState({});
   const [assignedCourtIds, setAssignedCourtIds] = useState([]);
   const [superAdminSection, setSuperAdminSection] = useState('dashboard');
+  const [exerciseProfile, setExerciseProfile] = useState({ age: '', weight: '', height: '', level: 'มือใหม่' });
   const [superAdminCourtId, setSuperAdminCourtId] = useState('court-1');
   const [expandedCourtIds, setExpandedCourtIds] = useState({});
   const [loading, setLoading] = useState(true);
@@ -1035,6 +1070,17 @@ export default function BadmintonApp() {
     };
   }, [dashboardData, todayKey]);
 
+  const exerciseMonth = new Date();
+  const exerciseDays = Array.from({ length: new Date(exerciseMonth.getFullYear(), exerciseMonth.getMonth() + 1, 0).getDate() }, (_, index) => {
+    const date = new Date(exerciseMonth.getFullYear(), exerciseMonth.getMonth(), index + 1);
+    return { date, plan: getExercisePlan(exerciseProfile, date) };
+  });
+  const exerciseBmi = Number(exerciseProfile.height) > 0
+    ? Number(exerciseProfile.weight) / ((Number(exerciseProfile.height) / 100) ** 2)
+    : 0;
+  const exerciseReady = Number(exerciseProfile.age) > 0 && Number(exerciseProfile.weight) > 0 && Number(exerciseProfile.height) > 0;
+  const exerciseToday = exerciseDays.find(item => item.date.toISOString().slice(0, 10) === todayKey) || exerciseDays[0];
+
   const pendingRequests = useMemo(() => {
     return paymentRequests.filter(req => req.status === 'pending');
   }, [paymentRequests]);
@@ -1632,6 +1678,9 @@ export default function BadmintonApp() {
             <button onClick={() => setSuperAdminSection('admins')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'admins' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
               ผู้ดูแล
             </button>
+            <button onClick={() => setSuperAdminSection('exercise')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'exercise' ? 'bg-amber-400 text-slate-950' : 'bg-white/10 text-white/70'}`}>
+              AI ออกกำลัง
+            </button>
           </div>
         </header>
 
@@ -1740,6 +1789,71 @@ export default function BadmintonApp() {
                 ))}
               </div>
             </div>
+          </main>
+        ) : superAdminSection === 'exercise' ? (
+          <main className="p-4 space-y-4">
+            <section className="rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950 p-5 text-white shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-amber-300 text-xs font-bold"><Sparkles size={15} /> BADBEAOW AI COACH</div>
+                  <h1 className="mt-2 text-xl font-black">แผนฝึกแบดมินตันเฉพาะบุคคล</h1>
+                  <p className="mt-1 text-xs leading-5 text-white/65">กรอกข้อมูลนักกีฬา แล้วให้ AI จัดสมดุลฟุตเวิร์ก ความฟิต และการพักฟื้น</p>
+                </div>
+                <Dumbbell size={27} className="shrink-0 text-amber-300" />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-2xl bg-white/10 p-2"><div className="text-lg font-black">{exerciseDays.length}</div><div className="text-[9px] text-white/60">วันในแผน</div></div>
+                <div className="rounded-2xl bg-white/10 p-2"><div className="text-lg font-black">4</div><div className="text-[9px] text-white/60">วันฝึก/สัปดาห์</div></div>
+                <div className="rounded-2xl bg-white/10 p-2"><div className="text-lg font-black">AI</div><div className="text-[9px] text-white/60">ปรับตามข้อมูล</div></div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Target size={18} className="text-orange-500" />
+                <div><h2 className="text-[15px] font-bold">ข้อมูลนักกีฬา</h2><p className="text-[11px] text-gray-500">ใช้สำหรับประเมินความหนักของการฝึก</p></div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {[
+                  { key: 'age', label: 'อายุ', unit: 'ปี', placeholder: 'เช่น 25' },
+                  { key: 'weight', label: 'น้ำหนัก', unit: 'กก.', placeholder: 'เช่น 65' },
+                  { key: 'height', label: 'ส่วนสูง', unit: 'ซม.', placeholder: 'เช่น 170' },
+                ].map(field => (
+                  <label key={field.key} className="text-[11px] font-bold text-gray-600">
+                    {field.label}
+                    <div className="relative mt-1"><input type="number" min="1" value={exerciseProfile[field.key]} onChange={event => setExerciseProfile(profile => ({ ...profile, [field.key]: event.target.value }))} placeholder={field.placeholder} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2.5 pr-9 text-sm font-bold text-gray-800 outline-none focus:border-orange-400" /><span className="absolute right-2 top-3 text-[9px] font-normal text-gray-400">{field.unit}</span></div>
+                  </label>
+                ))}
+              </div>
+              <label className="mt-3 block text-[11px] font-bold text-gray-600">ระดับการเล่น
+                <select value={exerciseProfile.level} onChange={event => setExerciseProfile(profile => ({ ...profile, level: event.target.value }))} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-orange-400">
+                  <option>มือใหม่</option><option>เล่นเป็นประจำ</option><option>นักกีฬาแข่งขัน</option>
+                </select>
+              </label>
+            </section>
+
+            {exerciseReady ? (
+              <section className="rounded-3xl border border-orange-100 bg-orange-50 p-5 shadow-sm">
+                <div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white"><Sparkles size={20} /></div><div><div className="text-xs font-bold text-orange-700">AI วิเคราะห์ให้แล้ว</div><h2 className="mt-1 text-base font-black text-gray-900">แผนสมดุลสำหรับนักแบดมินตัน</h2></div></div>
+                <p className="mt-3 text-xs leading-5 text-gray-700">จากข้อมูล {exerciseProfile.age} ปี, {exerciseProfile.weight} กก., {exerciseProfile.height} ซม. (BMI {exerciseBmi.toFixed(1)}) แนะนำให้เน้น <b>ฟุตเวิร์กและแกนกลางลำตัว</b> เพื่อเคลื่อนที่เข้าหาลูกได้ไวขึ้น พร้อมพักฟื้นอย่างน้อย 2 วันต่อสัปดาห์</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]"><div className="rounded-xl bg-white/70 p-3"><b className="block text-orange-700">วันนี้</b><span>{WORKOUT_TYPES.find(type => type.key === exerciseToday.plan.typeKey)?.label} {exerciseToday.plan.duration ? `${exerciseToday.plan.duration} นาที` : ''}</span></div><div className="rounded-xl bg-white/70 p-3"><b className="block text-orange-700">ความหนัก</b><span>{exerciseToday.plan.intensity}</span></div></div>
+              </section>
+            ) : <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-xs text-gray-500">กรอกอายุ น้ำหนัก และส่วนสูง เพื่อดูคำแนะนำจาก AI</div>}
+
+            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between"><div><div className="flex items-center gap-2"><CalendarDays size={17} className="text-orange-500" /><h2 className="text-[15px] font-bold">ตารางฝึกประจำเดือน</h2></div><p className="mt-1 text-[11px] text-gray-500">{exerciseMonth.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })} · วันนี้เน้นรายการสีส้ม</p></div><Activity size={19} className="text-gray-300" /></div>
+              <div className="mt-4 space-y-2">
+                {exerciseDays.map(({ date, plan }) => {
+                  const workout = WORKOUT_TYPES.find(type => type.key === plan.typeKey);
+                  const isToday = date.toISOString().slice(0, 10) === todayKey;
+                  return <div key={date.toISOString()} className={`grid grid-cols-[42px_1fr_auto] items-center gap-3 rounded-2xl border p-3 ${isToday ? 'border-orange-300 bg-orange-50 ring-1 ring-orange-200' : 'border-gray-100 bg-white'}`}>
+                    <div className={`text-center ${isToday ? 'text-orange-600' : 'text-gray-500'}`}><div className="text-[10px] font-bold">{date.toLocaleDateString('th-TH', { weekday: 'short' })}</div><div className="text-lg font-black">{date.getDate()}</div></div>
+                    <div className="min-w-0"><div className="flex items-center gap-2"><span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg border text-sm font-black ${workout.color}`}>{workout.icon}</span><span className="truncate text-xs font-bold text-gray-800">{workout.label}{isToday && <span className="ml-1 text-orange-600">· วันนี้</span>}</span></div><div className="mt-1 truncate text-[10px] text-gray-500">{plan.detail}</div></div>
+                    <div className="text-right text-[10px] font-bold text-gray-500">{plan.duration ? `${plan.duration} นาที` : 'พัก'}</div>
+                  </div>;
+                })}
+              </div>
+            </section>
           </main>
         ) : (
           <main className="p-4 space-y-4">
