@@ -15,6 +15,7 @@ import {
 import { getDatabase, ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast, orderByChild, endAt } from 'firebase/database';
 import ExercisePlanner from './components/ExercisePlanner';
 import CommunityCourt from './components/CommunityCourt';
+import UserGuide from './components/UserGuide';
 
 // eslint-disable-next-line react/prop-types
 const ShuttlecockIcon = ({ size = 24, className = '' }) => (
@@ -1903,37 +1904,7 @@ export default function BadmintonApp() {
 
   // Maintenance screen
   // Modal คู่มือการใช้งาน (ใช้ทั้งหน้าเลือกคอร์ดและหน้าจัดการคอร์ด)
-  const guideModal = showGuide && (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
-        <div className={`bg-gradient-to-br ${selectedCourt?.accent || 'from-purple-600 to-indigo-700'} p-5 text-white flex items-start justify-between`}>
-          <div>
-            <div className="flex items-center gap-2 mb-1"><BookOpen size={21} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
-            <p className="text-xs text-white/75">BADBEAOW ระบบจัดการคิวตีแบด</p>
-          </div>
-          <button onClick={() => setShowGuide(false)} className="p-1 text-white/75 hover:text-white" aria-label="ปิดคู่มือ"><X size={20} /></button>
-        </div>
-        <div className="p-5 overflow-y-auto max-h-[calc(85vh-92px)] text-sm text-gray-700 space-y-4 leading-6">
-          <section>
-            <h3 className="font-bold text-gray-900 mb-1">เริ่มต้นใช้งาน</h3>
-            <ol className="list-decimal list-inside space-y-1 text-gray-600 text-xs">
-              <li>เลือกคอร์ดที่ต้องการใช้งาน</li>
-              <li>เปิดเมนู <b>รายชื่อ</b> แล้วเปิดสวิตช์ข้างชื่อคนที่มาเล่นวันนี้</li>
-              <li>ไปที่ <b>คิวสนาม</b> เลือกผู้เล่น 2 คน แล้วกด <b>เพิ่มเข้าคิวรอ</b></li>
-            </ol>
-          </section>
-          <section>
-            <h3 className="font-bold text-gray-900 mb-1">จัดคิวและเริ่มแข่ง</h3>
-            <ul className="list-disc list-inside space-y-1 text-gray-600 text-xs">
-              <li>เมื่อมีคิวอย่างน้อย 2 คู่ ให้กด <b>ดึงคิวที่ 1 & 2 ลงสนาม</b></li>
-              <li>เมื่อจบเกม กด <b>ทีม A ชนะ</b> หรือ <b>ทีม B ชนะ</b> เพื่อบันทึกสถิติ</li>
-              <li>ผู้ชนะจะอยู่สนามต่อ ตามกติกา WINNER STAYS ON ส่วนผู้เล่นที่เหลือจะกลับเข้าคิว</li>
-            </ul>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+  const guideModal = showGuide && <UserGuide accent={selectedCourt?.accent} onClose={() => setShowGuide(false)} />;
 
   if (!loading && effectiveMaintenanceMode && userRole !== 'superAdmin') {
     return (
