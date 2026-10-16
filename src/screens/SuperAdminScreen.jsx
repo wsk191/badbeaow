@@ -1,5 +1,12 @@
 import { Activity, ArrowLeft, CalendarDays, Dumbbell, LogOut, Sparkles, Swords, Target, Wrench } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { onValue, ref } from 'firebase/database';
 import ExercisePlanner from '../components/ExercisePlanner';
+import AdminRequestsPanel from './superadmin/AdminRequestsPanel';
+import CourtsDataPanel from './superadmin/CourtsDataPanel';
+import CommunityPanel from './superadmin/CommunityPanel';
+import AccessLogPanel from './superadmin/AccessLogPanel';
+import { db } from '../lib/firebase';
 import { COURTS, WORKOUT_TYPES } from '../lib/appConfig';
 import { useApp } from '../context/AppContext';
 
@@ -14,6 +21,18 @@ export default function SuperAdminScreen() {
     setSuperAdminSection, setSuperAdminShowHome, superAdminCourt, superAdminCourtId,
     superAdminSection, toast, todayKey, toggleMaintenanceMode,
   } = useApp();
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  useEffect(() => onValue(ref(db, 'adminRequests'), snapshot => {
+    setPendingRequestCount(Object.values(snapshot.val() || {}).filter(request => request.status === 'pending').length);
+  }, () => setPendingRequestCount(0)), []);
+  const tabs = [
+    ['dashboard', 'ภาพรวม'],
+    ['admins', 'แอดมิน', pendingRequestCount],
+    ['courts', 'ข้อมูลสนาม'],
+    ['community', 'ลานชุมชน'],
+    ['logs', 'Log อุปกรณ์'],
+    ['exercise', 'AI ออกกำลัง'],
+  ];
 
   return (
     <div style={{ fontFamily: "'Prompt', sans-serif" }} className="min-h-screen w-full bg-slate-50 text-gray-800 relative overflow-x-hidden pb-6">
@@ -37,16 +56,13 @@ export default function SuperAdminScreen() {
             </button>
           </div>
         </div>
-        <div className="mt-4 flex gap-2">
-          <button onClick={() => setSuperAdminSection('dashboard')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'dashboard' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
-            ภาพรวม
-          </button>
-          <button onClick={() => setSuperAdminSection('admins')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'admins' ? 'bg-white text-slate-900' : 'bg-white/10 text-white/70'}`}>
-            ผู้ดูแล
-          </button>
-          <button onClick={() => setSuperAdminSection('exercise')} className={`flex-1 rounded-xl py-2.5 text-xs font-bold ${superAdminSection === 'exercise' ? 'bg-amber-400 text-slate-950' : 'bg-white/10 text-white/70'}`}>
-            AI ออกกำลัง
-          </button>
+        <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
+          {tabs.map(([key, label, badge]) => (
+            <button key={key} onClick={() => setSuperAdminSection(key)} className={`relative shrink-0 rounded-xl px-3.5 py-2.5 text-xs font-bold ${superAdminSection === key ? (key === 'exercise' ? 'bg-amber-400 text-slate-950' : 'bg-white text-slate-900') : 'bg-white/10 text-white/70'}`}>
+              {label}
+              {badge > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white ring-2 ring-slate-950">{badge}</span>}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -227,9 +243,13 @@ export default function SuperAdminScreen() {
           </div>
         </>
       ) : (
-        <main className="p-4 space-y-4">
-          <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
-            <h2 className="text-[15px] font-bold">เพิ่มผู้ดูแลคอร์ด</h2>
+        <main className="mx-auto max-w-5xl p-4 space-y-4 md:p-8">
+          {superAdminSection === 'courts' && <CourtsDataPanel />}
+          {superAdminSection === 'community' && <CommunityPanel />}
+          {superAdminSection === 'logs' && <AccessLogPanel />}
+          {superAdminSection === 'admins' && <AdminRequestsPanel />}
+          {superAdminSection === 'admins' && <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
+            <h2 className="text-[15px] font-bold">เพิ่มผู้ดูแลคอร์ดด้วย UID</h2>
             <p className="text-[11px] text-gray-500 mt-1">เลือกคอร์ดและใส่ Firebase Auth UID</p>
             <select value={superAdminCourtId} onChange={event => setSuperAdminCourtId(event.target.value)} className="w-full mt-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm">
               {COURTS.map(courtItem => <option key={courtItem.id} value={courtItem.id}>{courtItem.name}</option>)}
@@ -238,7 +258,7 @@ export default function SuperAdminScreen() {
               <input value={adminUidInput} onChange={event => setAdminUidInput(event.target.value)} placeholder="Firebase Auth UID" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm" />
               <button type="submit" disabled={isProcessing || !adminUidInput.trim()} className="w-full bg-slate-900 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-50">เพิ่ม Admin ให้ {superAdminCourt.name}</button>
             </form>
-          </div>
+          </div>}
         </main>
       )}
     </div>

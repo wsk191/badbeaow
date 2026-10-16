@@ -1,11 +1,10 @@
 {
   "rules": {
-    ".read": "auth != null",
     ".write": false,
     "users": {
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')"
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'"
       }
     },
     "boardAdmins": {
@@ -43,15 +42,17 @@
       "avatars": {
         ".read": "auth != null",
         "$avatarId": {
-          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['name', 'description', 'shirt', 'pants', 'hair', 'skin', 'shoes', 'face', 'hairStyle', 'ownerId', 'createdAt'])) || (data.exists() && !newData.exists() && (data.child('ownerId').val() === auth.uid || !data.child('createdAt').exists() || data.child('createdAt').val() <= now - 7200000)))",
+          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['name', 'description', 'shirt', 'pants', 'hair', 'skin', 'shoes', 'face', 'hairStyle', 'ownerId', 'createdAt'])) || (data.exists() && !newData.exists() && (data.child('ownerId').val() === auth.uid || !data.child('createdAt').exists() || data.child('createdAt').val() <= now - 7200000))) || (auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
           ".validate": "newData.child('name').isString() && newData.child('description').isString() && newData.child('shirt').isString() && newData.child('pants').isString() && newData.child('hair').isString() && newData.child('skin').isString() && newData.child('shoes').isString() && newData.child('face').isString() && newData.child('hairStyle').isString() && newData.child('ownerId').isString() && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now + 60000"
         }
       },
       "chat": {
         ".read": "auth != null",
-        ".indexOn": ["createdAt"],
+        ".indexOn": [
+          "createdAt"
+        ],
         "$messageId": {
-          ".write": "auth != null && (!data.exists() || (!newData.exists() && data.child('createdAt').val() < now - ((now + 25200000) % 7200000)))",
+          ".write": "auth != null && (!data.exists() || (!newData.exists() && data.child('createdAt').val() < now - ((now + 25200000) % 7200000))) || (auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
           ".validate": "newData.child('createdAt').val() <= now + 60000 && newData.hasChildren(['text', 'sender', 'senderId', 'createdAt']) && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 180 && newData.child('sender').isString() && newData.child('sender').val().length <= 22 && newData.child('senderId').isString() && newData.child('createdAt').isNumber()"
         }
       }
@@ -101,6 +102,24 @@
               ".validate": "newData.hasChildren(['playerId', 'playerName', 'slipImage', 'slipHash', 'status', 'createdAt']) && newData.child('playerId').isString() && newData.child('playerName').isString() && newData.child('slipImage').isString() && newData.child('slipHash').isString() && newData.child('status').isString() && newData.child('createdAt').isNumber()"
             }
           }
+        }
+      }
+    },
+    "adminRequests": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
+        ".write": "auth != null && ((auth.uid === $uid && !data.exists() && auth.token.email != null && newData.child('email').val() === auth.token.email && newData.child('status').val() === 'pending') || root.child('users').child(auth.uid).child('role').val() === 'superAdmin')",
+        ".validate": "newData.hasChildren(['email', 'courtId', 'status', 'createdAt']) && newData.child('email').isString() && newData.child('courtId').isString() && newData.child('courtId').val().matches(/^court-[1-4]$/) && newData.child('status').isString() && newData.child('status').val().matches(/^(pending|approved|rejected|revoked)$/) && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now + 60000"
+      }
+    },
+    "accessLogs": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'superAdmin'",
+      "$day": {
+        "$deviceId": {
+          ".write": "auth != null && $day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && $deviceId.length <= 40",
+          ".validate": "newData.hasChildren(['uid', 'lastSeen', 'visits', 'deviceType', 'os', 'browser']) && newData.child('uid').val() === auth.uid && newData.child('lastSeen').isNumber() && newData.child('lastSeen').val() <= now + 60000 && newData.child('visits').isNumber() && newData.child('visits').val() <= 100000 && (!newData.child('firstSeen').exists() || newData.child('firstSeen').isNumber()) && newData.child('deviceType').isString() && newData.child('deviceType').val().length <= 20 && newData.child('os').isString() && newData.child('os').val().length <= 20 && newData.child('osVersion').isString() && newData.child('osVersion').val().length <= 20 && newData.child('browser').isString() && newData.child('browser').val().length <= 30 && newData.child('model').isString() && newData.child('model').val().length <= 60 && newData.child('screen').isString() && newData.child('screen').val().length <= 20 && newData.child('language').isString() && newData.child('language').val().length <= 12 && newData.child('email').isString() && newData.child('email').val().length <= 120 && newData.child('lastCourt').isString() && newData.child('lastCourt').val().length <= 20"
         }
       }
     }

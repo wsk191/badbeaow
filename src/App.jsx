@@ -8,6 +8,7 @@ import HomeScreen from './screens/HomeScreen';
 import CourtScreen from './screens/court/CourtScreen';
 import { AppContext } from './context/AppContext';
 import { auth, db } from './lib/firebase';
+import { logVisit } from './lib/accessLog';
 import { COURTS, INACTIVITY_TIMEOUT_MS, getChatWindowStart, getExercisePlan, getTodayKey, isCommunityAvatarExpired, isMaintenanceScheduleActive } from './lib/appConfig';
 
 export default function BadmintonApp() {
@@ -79,6 +80,8 @@ export default function BadmintonApp() {
   const [adminUidInput, setAdminUidInput] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  // undefined = ยังโหลดอยู่, null = ยังไม่เคยขอ
+  const [myAdminRequest, setMyAdminRequest] = useState(undefined);
   const [showAdminGuide, setShowAdminGuide] = useState(false);
   const [remoteCommunityAvatars, setRemoteCommunityAvatars] = useState([]);
   // Avatars created on this device, kept until the server confirms the write (or forever if rules block sharing).
@@ -436,6 +439,33 @@ export default function BadmintonApp() {
     const timer = setInterval(() => setResultLockNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [court.resultLockStartedAt]);
+
+  // คำขอเป็นแอดมินของบัญชีที่ล็อกอินอยู่ (ยังไม่มีสิทธิ์สนามไหน)
+  useEffect(() => {
+    if (!user?.email || userRole === 'superAdmin') {
+      setMyAdminRequest(undefined);
+      return undefined;
+    }
+    return onValue(ref(db, `adminRequests/${user.uid}`), snapshot => {
+      setMyAdminRequest(snapshot.val());
+    }, () => setMyAdminRequest(undefined));
+  }, [user, userRole]);
+
+  // เมื่อ SuperAdmin อนุมัติ ให้ได้สิทธิ์สนามนั้นทันทีโดยไม่ต้องล็อกอินใหม่
+  useEffect(() => {
+    if (myAdminRequest?.status !== 'approved' || assignedCourtIds.includes(myAdminRequest.courtId)) return;
+    get(ref(db, `boardAdmins/${myAdminRequest.courtId}/${user.uid}`))
+      .then(snapshot => {
+        if (snapshot.val() === true) setAssignedCourtIds(current => [...new Set([...current, myAdminRequest.courtId])]);
+      })
+      .catch(() => {});
+  }, [myAdminRequest, assignedCourtIds, user]);
+
+  // Log อุปกรณ์ที่เข้าใช้งาน (วันละ 1 รายการต่ออุปกรณ์) ให้ SuperAdmin ดู
+  useEffect(() => {
+    if (!user?.uid) return;
+    logVisit({ uid: user.uid, email: user.email, courtId: selectedCourtId }).catch(() => {});
+  }, [user, selectedCourtId]);
 
   // Auth Listener
   useEffect(() => {
@@ -1414,7 +1444,8 @@ export default function BadmintonApp() {
       if (!isAdmin) return;
       setIsProcessing(true);
       try {
-          await set(ref(db, `${courtRoot}/players`), null);
+          // ลบทีละคน เพราะ rules อนุญาตให้เขียนได้ระดับผู้เล่นแต่ละคน ไม่ใช่ทั้งโฟลเดอร์ players
+          await update(ref(db), Object.fromEntries(players.map(p => [`${courtRoot}/players/${p.id}`, null])));
           await set(ref(db, `${courtRoot}/queue`), null);
           await set(ref(db, `${courtRoot}/court`), { teamA: null, teamB: null });
           setShowDeleteAllPlayersModal(false);
@@ -1781,7 +1812,7 @@ export default function BadmintonApp() {
   };
 
   const showSplash = loading || !splashComplete;
-  const visibleCourts = user?.email && userRole !== 'superAdmin'
+  const visibleCourts = user?.email && userRole !== 'superAdmin' && assignedCourtIds.length > 0
     ? COURTS.filter(courtItem => assignedCourtIds.includes(courtItem.id))
     : COURTS;
   const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
@@ -1834,6 +1865,7 @@ export default function BadmintonApp() {
     submitPaymentRequest, superAdminCourt, superAdminCourtId, superAdminSection, toast,
     todayKey, toggleCommunityFullscreen, toggleMaintenanceMode, togglePresence, totalCourtBill,
     updatePaymentRequest, user, userRole, visibleCourts,
+    myAdminRequest, showToast,
   };
 
   let screen;

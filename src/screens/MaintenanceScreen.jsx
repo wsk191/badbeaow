@@ -1,10 +1,10 @@
-import { Key, Mail, Wrench } from 'lucide-react';
+import { Wrench } from 'lucide-react';
+import LoginModal from './LoginModal';
 import { useApp } from '../context/AppContext';
 
 export default function MaintenanceScreen() {
   const {
-    handleAdminLogin, isProcessing, loginEmail, loginError, loginPassword, setLoginEmail,
-    setLoginPassword, setShowLoginModal, showLoginModal,
+    setShowLoginModal, showLoginModal,
   } = useApp();
 
   return (
@@ -23,29 +23,7 @@ export default function MaintenanceScreen() {
         </button>
       </div>
 
-      {showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg md:max-w-xl rounded-3xl bg-white p-6 text-left text-gray-800 shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="mb-1 text-lg font-bold">เข้าสู่ระบบผู้ดูแล</h3>
-            <p className="mb-4 text-xs text-gray-500">สำหรับ SuperAdmin เพื่อเปิดระบบกลับมาใช้งาน</p>
-            {loginError && <div className="mb-3 rounded-xl bg-red-50 p-3 text-center text-xs font-medium text-red-600">{loginError}</div>}
-            <form onSubmit={handleAdminLogin} className="space-y-3">
-              <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-                <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="อีเมล" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
-              </div>
-              <div className="relative">
-                <Key size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="รหัสผ่าน" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500" />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm transition-colors">ยกเลิก</button>
-                <button type="submit" disabled={isProcessing} className="flex-1 py-3 rounded-xl font-semibold bg-slate-900 hover:bg-slate-800 text-white text-sm disabled:opacity-50 transition-colors">เข้าสู่ระบบ</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showLoginModal && <LoginModal />}
     </div>
   );
 }

@@ -72,3 +72,6 @@ export const getExercisePlan = (profile, date) => {
   };
   return { typeKey, duration, intensity, detail: details[typeKey] };
 };
+
+// Court 1 kept the original root path; other courts live under badbeaow/courts/{id}
+export const getCourtRootPath = courtId => (courtId === 'court-1' ? 'badbeaow' : `badbeaow/courts/${courtId}`);
