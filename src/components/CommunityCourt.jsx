@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
+THREE.Cache.enabled = true;
+
 const TAG_FONT = '"Noto Sans Thai", "Leelawadee UI", Tahoma, Arial, sans-serif';
 const CHARACTER_RADIUS = 0.2;
 const OWN_WALK_SPEED = 1.7;
@@ -391,6 +393,159 @@ const animateAvatar = (data, elapsed) => {
   }
 };
 
+// ---------- Meme dancers on the stage ----------
+const DANCE_BPM = 118;
+const STAGE_DANCERS = [
+  { model: '/models/Avatars/mr_beast_meme.glb', style: 'default', label: 'Default Dance' },
+  { model: '/models/Avatars/roblox-bacon-hair.glb', style: 'griddy', label: 'Griddy' },
+  { model: '/models/Avatars/free_rigged_toothless_meme.glb', style: 'toothless', label: 'Toothless Dance' },
+  { model: '/models/Avatars/shiba.glb', style: 'vibe', label: 'Doge Vibe' },
+];
+
+const setJoint = (joint, angle) => {
+  joint.bone.quaternion.copy(joint.rest);
+  if (joint.relax) joint.bone.quaternion.premultiply(joint.relax);
+  if (angle) joint.bone.quaternion.premultiply(jointRotation.setFromAxisAngle(joint.axis, angle));
+};
+
+// Angles rotate about the model's own left axis: negative swings a limb forward/up, positive backward.
+const DANCE_MOVES = {
+  // Fortnite-style default dance: alternating arm pumps over the head, knees bouncing on the beat.
+  default: (beat, joint) => {
+    const s = Math.sin(beat);
+    const bounce = Math.abs(Math.sin(beat));
+    if (joint.key === 'upperArmL') return -(1.5 + 0.6 * s);
+    if (joint.key === 'upperArmR') return -(1.5 - 0.6 * s);
+    if (joint.key.startsWith('lowerArm')) return -1.1;
+    if (joint.key.startsWith('upperLeg')) return -0.2 * bounce;
+    if (joint.key.startsWith('lowerLeg')) return 0.4 * bounce;
+    return 0;
+  },
+  // Griddy: big alternating arm swings with high knee lifts.
+  griddy: (beat, joint) => {
+    const s = Math.sin(beat);
+    const side = joint.sign;
+    if (joint.key.startsWith('upperArm')) return side * s * 1.1;
+    if (joint.key.startsWith('lowerArm')) return -0.7;
+    if (joint.key.startsWith('upperLeg')) return -Math.max(0, side * s) * 1.0;
+    if (joint.key.startsWith('lowerLeg')) return Math.max(0, side * s) * 1.4;
+    return 0;
+  },
+  // Toothless meme: little stubby arms flap while it steps from side to side.
+  toothless: (beat, joint) => {
+    const half = Math.sin(beat / 2);
+    if (joint.key.startsWith('upperArm')) return -0.5 + Math.sin(beat) * 0.35;
+    if (joint.key.startsWith('lowerArm')) return -0.4;
+    if (joint.key.startsWith('upperLeg')) return -Math.max(0, joint.sign * half) * 0.5;
+    if (joint.key.startsWith('lowerLeg')) return Math.max(0, joint.sign * half) * 0.6;
+    return 0;
+  },
+};
+
+const GROOVES = {
+  default: (groove, beat) => {
+    groove.position.y = Math.abs(Math.sin(beat)) * 0.03;
+    groove.rotation.set(0, Math.sin(beat / 2) * 0.25, 0);
+  },
+  griddy: (groove, beat) => {
+    groove.position.y = Math.abs(Math.sin(beat)) * 0.045;
+    groove.rotation.set(0.14, Math.sin(beat) * 0.12, 0);
+  },
+  toothless: (groove, beat) => {
+    groove.position.y = Math.abs(Math.sin(beat)) * 0.03;
+    groove.position.x = Math.sin(beat / 2) * 0.06;
+    groove.rotation.set(0, 0, Math.sin(beat / 2) * 0.28);
+  },
+  // Doge head-bob vibe: nodding, squash and stretch, slight sway.
+  vibe: (groove, beat) => {
+    const bob = Math.abs(Math.sin(beat));
+    groove.rotation.set(Math.sin(beat) * 0.2, 0, Math.sin(beat / 2) * 0.1);
+    groove.scale.set(1 + bob * 0.04, 1 - bob * 0.07, 1 + bob * 0.04);
+  },
+};
+
+const animateDancer = (dancer, elapsed) => {
+  const beat = elapsed * Math.PI * 2 * (DANCE_BPM / 60) + dancer.offset;
+  GROOVES[dancer.style]?.(dancer.groove, beat);
+  const move = DANCE_MOVES[dancer.style];
+  if (dancer.rig && move) dancer.rig.joints.forEach(joint => setJoint(joint, move(beat, joint)));
+};
+
+const findStage = (model, floorY) => {
+  let platform = null;
+  let curtains = null;
+  model.traverse(object => {
+    if (!object.isMesh) return;
+    if (!platform && /^Scene_Scene/i.test(object.name)) platform = object;
+    if (!curtains && /curtain/i.test(object.name)) curtains = object;
+  });
+  if (!platform) return null;
+  const box = new THREE.Box3().setFromObject(platform);
+  const center = box.getCenter(new THREE.Vector3());
+  // The stage runs along the wall it is built against; dancers stand in the open strip in front of the curtain.
+  const alongX = Math.abs(center.z) >= Math.abs(center.x);
+  const curtainBox = curtains ? new THREE.Box3().setFromObject(curtains) : null;
+  const towardHall = alongX ? Math.sign(-center.z) || 1 : Math.sign(-center.x) || 1;
+  const axis = alongX ? 'z' : 'x';
+  const across = alongX ? 'x' : 'z';
+  const front = towardHall > 0 ? box.max[axis] : box.min[axis];
+  const back = curtainBox ? (towardHall > 0 ? curtainBox.max[axis] : curtainBox.min[axis]) : center[axis];
+  const spot = center.clone();
+  spot[axis] = (front + back) / 2;
+  if (curtainBox) spot[across] = (curtainBox.min[across] + curtainBox.max[across]) / 2;
+  const width = curtainBox ? curtainBox.max[across] - curtainBox.min[across] : box.max[across] - box.min[across];
+
+  // The stage floor is the lowest upward-facing surface above the hall floor (rigging and arches hang higher up).
+  const raycaster = new THREE.Raycaster(new THREE.Vector3(spot.x, box.max.y + 1, spot.z), new THREE.Vector3(0, -1, 0));
+  const side = platform.material.side;
+  platform.material.side = THREE.DoubleSide;
+  const floorHits = raycaster.intersectObject(platform, false)
+    .filter(hit => hit.face && hit.point.y > floorY + 0.1 && hit.face.normal.clone().transformDirection(platform.matrixWorld).y > 0.5);
+  platform.material.side = side;
+  spot.y = floorHits.length ? Math.min(...floorHits.map(hit => hit.point.y)) : box.max.y;
+  return { spot, width, alongX };
+};
+
+const loadStageDancers = (world, model) => {
+  const stage = findStage(model, world.floorY);
+  if (!stage) return;
+  const spacing = Math.min(1.1, stage.width / (STAGE_DANCERS.length + 1));
+  // Face the middle of the hall.
+  const facing = Math.atan2(-stage.spot.x, -stage.spot.z);
+  STAGE_DANCERS.forEach((config, index) => {
+    const offsetAlong = (index - (STAGE_DANCERS.length - 1) / 2) * spacing;
+    const group = new THREE.Group();
+    group.position.set(stage.spot.x + (stage.alongX ? offsetAlong : 0), stage.spot.y, stage.spot.z + (stage.alongX ? 0 : offsetAlong));
+    group.rotation.y = facing;
+    const groove = new THREE.Group();
+    group.add(groove);
+    world.scene.add(group);
+    const dancer = { style: config.style, group, groove, rig: null, offset: index * 0.7 };
+    world.dancers.push(dancer);
+    world.modelLoader.load(config.model, gltf => {
+      if (!world.dancers.includes(dancer)) return;
+      const avatar = gltf.scene;
+      fixAvatarMaterials(gltf, world.maxAnisotropy);
+      const bounds = new THREE.Box3().setFromObject(avatar);
+      const avatarSize = bounds.getSize(new THREE.Vector3());
+      const avatarCenter = bounds.getCenter(new THREE.Vector3());
+      const scale = 0.95 / Math.max(avatarSize.y, avatarSize.x, avatarSize.z, 0.01);
+      avatar.scale.setScalar(scale);
+      avatar.position.set(-avatarCenter.x * scale, -bounds.min.y * scale, -avatarCenter.z * scale);
+      avatar.traverse(object => { if (object.isMesh) object.castShadow = true; });
+      const holder = new THREE.Group();
+      holder.add(avatar);
+      groove.add(holder);
+      const rig = setupRig(avatar);
+      if (rig) {
+        const forward = new THREE.Vector3().crossVectors(rig.left, new THREE.Vector3(0, 1, 0));
+        holder.rotation.y = -Math.atan2(forward.x, forward.z);
+        dancer.rig = rig;
+      }
+    }, undefined, error => console.warn('Stage dancer fallback:', error));
+  });
+};
+
 // ---------- Camera stays inside the building ----------
 // Rays from inside the hall find the real walls and ceiling; the camera is clamped to that box.
 const findInteriorBounds = (model, worldBox, floorY) => {
@@ -608,6 +763,7 @@ export default function CommunityCourt({ avatars = [], messages = [], view = 'ov
       walkBounds: new THREE.Box3(new THREE.Vector3(-11, 0, -11), new THREE.Vector3(11, 0, 11)),
       cameraBounds: null,
       collisionMeshes: [],
+      dancers: [],
       floorY: 0,
       focusHeight: 1,
       framedDistance: 15,
@@ -697,6 +853,7 @@ export default function CommunityCourt({ avatars = [], messages = [], view = 'ov
       );
       world.cameraBounds = findInteriorBounds(model, worldBox, world.floorY);
       model.traverse(object => { if (object.isMesh) world.collisionMeshes.push(object); });
+      loadStageDancers(world, model);
       const modelSize = Math.max(worldSize.x, worldSize.y, worldSize.z);
       world.framedDistance = Math.max(modelSize * 0.34, 3.5);
       world.focusHeight = Math.max(worldSize.y * 0.18, 0.8);
@@ -808,6 +965,8 @@ export default function CommunityCourt({ avatars = [], messages = [], view = 'ov
           }
         }
       });
+      world.dancers.forEach(dancer => animateDancer(dancer, elapsed));
+
       // Walking: the camera trails the avatar at third-person distance.
       if (ownMoved) {
         world.cameraGoal = null;
