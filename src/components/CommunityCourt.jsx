@@ -62,11 +62,13 @@ const createAvatarBody = avatar => {
     const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.55, 4, 8), pants);
     leg.position.set(direction * 0.14, 0.6, 0);
     leg.userData.limb = 'leg';
+    leg.userData.side = direction;
     group.add(leg);
     const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), makeMaterial(avatar.shoes || 0xf8fbff, 0.45));
     shoe.scale.set(1.25, 0.55, 1.7);
     shoe.position.set(direction * 0.16, 0.2, 0.06);
     shoe.userData.limb = 'leg';
+    shoe.userData.side = direction;
     group.add(shoe);
   });
   [-1, 1].forEach(direction => {
@@ -74,6 +76,7 @@ const createAvatarBody = avatar => {
     arm.position.set(direction * 0.42, 1.42, 0);
     arm.rotation.z = direction * 0.55;
     arm.userData.limb = 'arm';
+    arm.userData.side = direction;
     group.add(arm);
   });
   group.traverse(object => { if (object.isMesh) object.castShadow = true; });
@@ -175,6 +178,274 @@ const disposeObject = root => {
   });
 };
 
+// ---------- Chat bubble over a character's head ----------
+const wrapText = (context, text, maxWidth, maxLines) => {
+  const lines = [];
+  let line = '';
+  for (const character of Array.from(text)) {
+    if (context.measureText(line + character).width > maxWidth && line) {
+      lines.push(line);
+      line = character.trimStart();
+    } else {
+      line += character;
+    }
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, -1)}…`;
+  }
+  return lines;
+};
+
+const createChatBubble = text => {
+  const font = `600 64px ${TAG_FONT}`;
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = font;
+  const lines = wrapText(measure, text.replace(/\s+/g, ' ').trim(), 760, 3);
+  const lineHeight = 84;
+  const padX = 44;
+  const padY = 28;
+  const tail = 34;
+  const margin = 16;
+  const boxWidth = Math.ceil(Math.max(...lines.map(line => measure.measureText(line).width), 90) + padX * 2);
+  const boxHeight = lines.length * lineHeight + padY * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = boxWidth + margin * 2;
+  canvas.height = boxHeight + tail + margin * 2;
+  const context = canvas.getContext('2d');
+  const centerX = canvas.width / 2;
+
+  roundedRect(context, margin, margin, boxWidth, boxHeight, 40);
+  context.fillStyle = 'rgba(255, 255, 255, 0.96)';
+  context.fill();
+  context.lineWidth = 4;
+  context.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+  context.stroke();
+  context.beginPath();
+  context.moveTo(centerX - 26, margin + boxHeight - 3);
+  context.lineTo(centerX, margin + boxHeight + tail);
+  context.lineTo(centerX + 26, margin + boxHeight - 3);
+  context.closePath();
+  context.fill();
+
+  context.font = font;
+  context.fillStyle = '#0f172a';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  lines.forEach((line, index) => context.fillText(line, centerX, margin + padY + lineHeight * (index + 0.5)));
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
+  const worldHeight = canvas.height * 0.0019;
+  bubble.scale.set(worldHeight * (canvas.width / canvas.height), worldHeight, 1);
+  bubble.center.set(0.5, 0);
+  bubble.renderOrder = 11;
+  return bubble;
+};
+
+const showChatBubble = (character, text) => {
+  const data = character.userData;
+  if (data.bubble) {
+    character.remove(data.bubble);
+    disposeObject(data.bubble);
+  }
+  const bubble = createChatBubble(text);
+  bubble.position.y = data.tag.position.y + data.tag.scale.y + 0.03;
+  character.add(bubble);
+  data.bubble = bubble;
+  data.bubbleUntil = performance.now() + THREE.MathUtils.clamp(4000 + text.length * 60, 4000, 9000);
+};
+
+// ---------- Avatar model fixes ----------
+// Some models need help to show color: specular-glossiness materials (no longer read by three.js)
+// get their diffuse texture loaded by hand, and untextured pure-black materials get readable colors.
+const fixAvatarMaterials = (gltf, maxAnisotropy) => {
+  const { parser } = gltf;
+  gltf.scene.traverse(object => {
+    if (!object.isMesh) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach(material => {
+      if (!material) return;
+      if (material.map) material.map.anisotropy = maxAnisotropy;
+      const index = parser.associations.get(material)?.materials;
+      const definition = index === undefined ? null : parser.json.materials?.[index];
+      const specGloss = definition?.extensions?.KHR_materials_pbrSpecularGlossiness;
+      if (specGloss) {
+        if (specGloss.diffuseFactor) material.color.fromArray(specGloss.diffuseFactor);
+        material.metalness = 0;
+        material.roughness = 1 - (specGloss.glossinessFactor ?? 0.5) * 0.5;
+        if (specGloss.diffuseTexture) {
+          parser.getDependency('texture', specGloss.diffuseTexture.index).then(texture => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = maxAnisotropy;
+            material.map = texture;
+            material.needsUpdate = true;
+          }).catch(() => {});
+        }
+        material.needsUpdate = true;
+      } else if (!material.map && material.color?.getHex() === 0) {
+        const name = (material.name || '').toLowerCase();
+        material.color.set(/outline/.test(name) ? '#0b0d10' : /eye/.test(name) ? '#a6e33b' : '#2f3540');
+        material.roughness = 0.55;
+        material.metalness = 0;
+      }
+    });
+  });
+};
+
+// ---------- Procedural walk for rigged models without animation clips ----------
+const BONE_SKIP = /twist|deform|_end|end_|attach|ik|pole|ctrl|roll|metacarpal|thumb|index|middle|ring|pinky/i;
+const boneSide = name => {
+  if (/left|(^|[_.:])l([_.:\d]|$)/i.test(name)) return 'L';
+  if (/right|(^|[_.:])r([_.:\d]|$)/i.test(name)) return 'R';
+  return '';
+};
+const bonePart = name => {
+  const lower = name.toLowerCase();
+  if (/thigh|upleg|leg_upper|upperleg/.test(lower)) return 'upperLeg';
+  if (/calf|shin|leg_lower|lowerleg|(left|right)leg([_\d]|$)/.test(lower)) return 'lowerLeg';
+  if (/forearm|lowerarm|arm_lower/.test(lower)) return 'lowerArm';
+  if (/upperarm|arm_upper|(left|right)arm([_\d]|$)/.test(lower)) return 'upperArm';
+  return '';
+};
+
+const setupRig = root => {
+  const bones = {};
+  root.traverse(object => {
+    if (!object.isBone || BONE_SKIP.test(object.name)) return;
+    const part = bonePart(object.name);
+    const side = boneSide(object.name);
+    if (part && side && !bones[part + side]) bones[part + side] = object;
+  });
+  if (!bones.upperLegL || !bones.upperLegR) return null;
+  root.updateMatrixWorld(true);
+  const rootRotationInverse = root.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const rootMatrixInverse = root.matrixWorld.clone().invert();
+  const inRoot = object => object.getWorldPosition(new THREE.Vector3()).applyMatrix4(rootMatrixInverse);
+  // The model's own "left" comes from its hips, so the walk works whichever way the file was exported.
+  const left = inRoot(bones.upperLegL).sub(inRoot(bones.upperLegR)).setY(0);
+  if (left.lengthSq() < 1e-10) return null;
+  left.normalize();
+  const down = new THREE.Vector3(0, -1, 0);
+  const joints = Object.entries(bones).map(([key, bone]) => {
+    const parentInverse = bone.parent.getWorldQuaternion(new THREE.Quaternion()).premultiply(rootRotationInverse).invert();
+    const toParent = axis => axis.clone().applyQuaternion(parentInverse).normalize();
+    let relax = null;
+    if (key.startsWith('upperArm')) {
+      // T-posed arms are lowered to hang beside the body.
+      const child = bone.children.find(item => item.isBone);
+      if (child) {
+        const direction = inRoot(child).sub(inRoot(bone)).normalize();
+        const angle = direction.angleTo(down);
+        if (angle > 0.7) relax = new THREE.Quaternion().setFromAxisAngle(toParent(new THREE.Vector3().crossVectors(direction, down).normalize()), angle - 0.35);
+      }
+    }
+    return { key, bone, rest: bone.quaternion.clone(), axis: toParent(left), relax, sign: key.endsWith('L') ? 1 : -1 };
+  });
+  return { joints, left };
+};
+
+const jointRotation = new THREE.Quaternion();
+const animateAvatar = (data, elapsed) => {
+  const motion = data.motion || 0;
+  const phase = data.phase || 0;
+  const swing = Math.sin(phase);
+  const running = data.activity === 'run';
+  const dancing = data.activity === 'dance';
+  const warmup = data.activity === 'warmup';
+
+  if (data.body.visible) {
+    data.body.children.forEach(child => {
+      const side = child.userData.side || 1;
+      if (child.userData.limb === 'leg') child.rotation.x = swing * side * (running ? 0.65 : 0.42) * motion + (warmup ? Math.sin(elapsed * 8) * 0.25 * side : 0);
+      if (child.userData.limb === 'arm') child.rotation.x = dancing ? Math.sin(elapsed * 5 + side) * 0.7 : -swing * side * (running ? 0.75 : 0.45) * motion;
+    });
+    data.body.position.y = Math.abs(swing) * 0.025 * motion;
+  }
+
+  if (data.rig) {
+    const legAmplitude = (running ? 0.75 : 0.45) * motion;
+    const kneeAmplitude = (running ? 1.1 : 0.7) * motion;
+    const armAmplitude = (running ? 0.8 : 0.45) * motion;
+    data.rig.joints.forEach(joint => {
+      const { key, sign } = joint;
+      let angle = 0;
+      if (key.startsWith('upperLeg')) angle = swing * sign * legAmplitude + (warmup ? Math.sin(elapsed * 8) * 0.3 * sign : 0);
+      else if (key.startsWith('lowerLeg')) angle = Math.max(0, sign * Math.sin(phase + 1.2)) * kneeAmplitude;
+      else if (key.startsWith('upperArm')) angle = dancing ? -(1.1 + Math.sin(elapsed * 5 + sign) * 0.45) : -swing * sign * armAmplitude;
+      else if (key.startsWith('lowerArm')) angle = -(0.18 + 0.35 * motion + (dancing ? 0.6 : 0));
+      joint.bone.quaternion.copy(joint.rest);
+      if (joint.relax) joint.bone.quaternion.premultiply(joint.relax);
+      if (angle) joint.bone.quaternion.premultiply(jointRotation.setFromAxisAngle(joint.axis, angle));
+    });
+    data.holder.position.y = Math.abs(swing) * 0.012 * motion;
+  } else if (data.holder && !data.mixer) {
+    // No skeleton to move: waddle and bob the whole model instead.
+    data.holder.position.y = Math.abs(swing) * 0.035 * motion + (dancing ? Math.abs(Math.sin(elapsed * 6)) * 0.04 : 0);
+    data.holder.rotation.z = swing * 0.1 * motion + (dancing ? Math.sin(elapsed * 6) * 0.12 : 0);
+    data.holder.rotation.x = 0.07 * motion;
+  }
+};
+
+// ---------- Camera stays inside the building ----------
+// Rays from inside the hall find the real walls and ceiling; the camera is clamped to that box.
+const findInteriorBounds = (model, worldBox, floorY) => {
+  const meshes = [];
+  const originalSides = [];
+  model.traverse(object => {
+    if (!object.isMesh) return;
+    meshes.push(object);
+    (Array.isArray(object.material) ? object.material : [object.material]).forEach(material => {
+      if (!material) return;
+      originalSides.push([material, material.side]);
+      material.side = THREE.DoubleSide;
+    });
+  });
+  const raycaster = new THREE.Raycaster();
+  const cast = (origin, direction) => {
+    raycaster.set(origin, direction);
+    return raycaster.intersectObjects(meshes, false)[0]?.distance;
+  };
+  const size = worldBox.getSize(new THREE.Vector3());
+  const center = worldBox.getCenter(new THREE.Vector3());
+  const found = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, ceiling: -Infinity };
+  const directions = {
+    maxX: new THREE.Vector3(1, 0, 0), minX: new THREE.Vector3(-1, 0, 0),
+    maxZ: new THREE.Vector3(0, 0, 1), minZ: new THREE.Vector3(0, 0, -1),
+    ceiling: new THREE.Vector3(0, 1, 0),
+  };
+  [-0.25, 0, 0.25].forEach(fx => [-0.25, 0, 0.25].forEach(fz => [1.6, 3].forEach(height => {
+    const origin = new THREE.Vector3(center.x + size.x * fx, floorY + height, center.z + size.z * fz);
+    Object.entries(directions).forEach(([key, direction]) => {
+      const distance = cast(origin, direction);
+      if (distance === undefined) return;
+      const hit = origin.clone().addScaledVector(direction, distance);
+      if (key === 'maxX') found.maxX = Math.max(found.maxX, hit.x);
+      if (key === 'minX') found.minX = Math.min(found.minX, hit.x);
+      if (key === 'maxZ') found.maxZ = Math.max(found.maxZ, hit.z);
+      if (key === 'minZ') found.minZ = Math.min(found.minZ, hit.z);
+      if (key === 'ceiling') found.ceiling = Math.max(found.ceiling, hit.y);
+    });
+  })));
+  originalSides.forEach(([material, side]) => { material.side = side; });
+  const pick = (value, fallback) => (Number.isFinite(value) ? value : fallback);
+  const margin = 0.35;
+  const interior = new THREE.Box3(
+    new THREE.Vector3(pick(found.minX, worldBox.min.x) + margin, floorY + 0.3, pick(found.minZ, worldBox.min.z) + margin),
+    new THREE.Vector3(pick(found.maxX, worldBox.max.x) - margin, pick(found.ceiling, worldBox.max.y) - margin, pick(found.maxZ, worldBox.max.z) - margin),
+  );
+  if (interior.min.x >= interior.max.x || interior.min.y >= interior.max.y || interior.min.z >= interior.max.z) {
+    return worldBox.clone().expandByScalar(-margin);
+  }
+  return interior;
+};
+
+const clampToInterior = (world, position) => (world.cameraBounds ? position.clamp(world.cameraBounds.min, world.cameraBounds.max) : position);
+
 const isBlocked = (world, x, z) => {
   const bounds = world.walkBounds;
   if (x < bounds.min.x || x > bounds.max.x || z < bounds.min.z || z > bounds.max.z) return true;
@@ -218,7 +489,7 @@ const focusOnCharacter = (world, character) => {
   direction.y = 0;
   if (direction.lengthSq() < 0.0001) direction.set(0, 0, 1);
   direction.normalize().setY(0.55).normalize();
-  world.cameraGoal = { target, position: target.clone().addScaledVector(direction, FOLLOW_DISTANCE) };
+  world.cameraGoal = { target, position: clampToInterior(world, target.clone().addScaledVector(direction, FOLLOW_DISTANCE)) };
 };
 
 const viewDirections = {
@@ -234,7 +505,7 @@ const applyView = (world, view) => {
   if (!world.modelLoaded) return;
   const direction = viewDirections[view] || viewDirections.overview;
   const target = new THREE.Vector3(0, world.focusHeight, 0);
-  world.cameraGoal = { target, position: direction.clone().multiplyScalar(world.framedDistance) };
+  world.cameraGoal = { target, position: clampToInterior(world, direction.clone().multiplyScalar(world.framedDistance)) };
 };
 
 function Joystick({ inputRef }) {
@@ -291,11 +562,12 @@ function Joystick({ inputRef }) {
   );
 }
 
-export default function CommunityCourt({ avatars = [], view = 'overview', ownerId, onAvatarSelect }) {
+export default function CommunityCourt({ avatars = [], messages = [], view = 'overview', ownerId, onAvatarSelect }) {
   const mountRef = useRef(null);
   const worldRef = useRef(null);
   const joystickRef = useRef({ x: 0, y: 0 });
   const selectRef = useRef(onAvatarSelect);
+  const shownMessagesRef = useRef(new Set());
 
   useEffect(() => { selectRef.current = onAvatarSelect; }, [onAvatarSelect]);
 
@@ -335,6 +607,7 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
       obstacles: [],
       walkBounds: new THREE.Box3(new THREE.Vector3(-11, 0, -11), new THREE.Vector3(11, 0, 11)),
       cameraBounds: null,
+      collisionMeshes: [],
       floorY: 0,
       focusHeight: 1,
       framedDistance: 15,
@@ -422,10 +695,8 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
         new THREE.Vector3(worldBox.min.x + 0.6, 0, worldBox.min.z + 0.6),
         new THREE.Vector3(worldBox.max.x - 0.6, 0, worldBox.max.z - 0.6),
       );
-      world.cameraBounds = new THREE.Box3(
-        new THREE.Vector3(-worldSize.x * 0.45, 0.2, -worldSize.z * 0.45),
-        new THREE.Vector3(worldSize.x * 0.45, worldSize.y * 0.72, worldSize.z * 0.45),
-      );
+      world.cameraBounds = findInteriorBounds(model, worldBox, world.floorY);
+      model.traverse(object => { if (object.isMesh) world.collisionMeshes.push(object); });
       const modelSize = Math.max(worldSize.x, worldSize.y, worldSize.z);
       world.framedDistance = Math.max(modelSize * 0.34, 3.5);
       world.focusHeight = Math.max(worldSize.y * 0.18, 0.8);
@@ -438,7 +709,7 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
       });
       applyView(world, world.view);
       const direction = viewDirections[world.view] || viewDirections.overview;
-      camera.position.copy(direction.clone().multiplyScalar(world.framedDistance));
+      camera.position.copy(clampToInterior(world, direction.clone().multiplyScalar(world.framedDistance)));
       controls.target.set(0, world.focusHeight, 0);
       controls.update();
       world.cameraGoal = null;
@@ -464,6 +735,8 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
     const move = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     const followTarget = new THREE.Vector3();
+    const cameraRaycaster = new THREE.Raycaster();
+    const cameraRay = new THREE.Vector3();
     let frameId;
     const animate = () => {
       timer.update();
@@ -516,17 +789,23 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
         }
         character.rotation.y = data.heading;
         character.position.y = world.floorY;
-        if (data.body.visible) {
-          const swing = data.activity === 'run' ? 14 : 8;
-          data.body.children.forEach(child => {
-            if (child.userData.limb === 'leg') child.rotation.x = moving || data.activity === 'dance' || data.activity === 'warmup' ? Math.sin(elapsed * swing) * (data.activity === 'dance' ? 0.35 : data.activity === 'warmup' ? 0.2 : 0.3) : 0;
-            if (child.userData.limb === 'arm' && data.activity === 'dance') child.rotation.x = Math.sin(elapsed * 5) * 0.5;
-          });
-        }
+        data.motion = THREE.MathUtils.lerp(data.motion || 0, moving ? 1 : 0, 1 - Math.exp(-delta * 8));
+        if (moving) data.phase = (data.phase || 0) + delta * (data.activity === 'run' ? 11 : 7);
+        animateAvatar(data, elapsed);
         if (data.mixer) {
-          data.action.paused = !moving && data.activity !== 'dance';
-          data.action.timeScale = data.activity === 'run' ? 1.7 : 1;
+          data.action.setEffectiveWeight(data.motion);
+          data.action.timeScale = data.activity === 'run' ? 1.6 : 1;
           data.mixer.update(delta);
+        }
+        if (data.bubble) {
+          const remaining = data.bubbleUntil - performance.now();
+          if (remaining <= 0) {
+            character.remove(data.bubble);
+            disposeObject(data.bubble);
+            data.bubble = null;
+          } else {
+            data.bubble.material.opacity = Math.min(1, remaining / 400);
+          }
         }
       });
       // Walking: the camera trails the avatar at third-person distance.
@@ -555,14 +834,23 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
         if (camera.position.distanceTo(world.cameraGoal.position) < 0.02) world.cameraGoal = null;
       }
 
+      controls.update();
       const bounds = world.cameraBounds;
       if (bounds) {
-        const offset = camera.position.clone().sub(controls.target);
         controls.target.clamp(bounds.min, bounds.max);
-        if (offset.length() > controls.maxDistance) offset.setLength(controls.maxDistance);
-        camera.position.copy(controls.target).add(offset);
+        camera.position.clamp(bounds.min, bounds.max);
+        if (camera.position.distanceTo(controls.target) < 0.4) camera.position.y = Math.min(bounds.max.y, controls.target.y + 0.8);
+        // Anything between the character and the camera (stands, rooms, pillars) pulls the camera in front of it.
+        cameraRay.copy(camera.position).sub(controls.target);
+        const distance = cameraRay.length();
+        if (distance > 0.05 && world.collisionMeshes.length) {
+          cameraRaycaster.set(controls.target, cameraRay.divideScalar(distance));
+          cameraRaycaster.far = distance;
+          const hit = cameraRaycaster.intersectObjects(world.collisionMeshes, false)[0];
+          if (hit) camera.position.copy(controls.target).addScaledVector(cameraRay, Math.max(hit.distance - 0.2, 0.25));
+        }
+        camera.lookAt(controls.target);
       }
-      controls.update();
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
     };
@@ -613,12 +901,14 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
       const character = new THREE.Group();
       const body = createAvatarBody(avatar);
       character.add(body);
-      character.add(createNameTag(avatar));
+      const tag = createNameTag(avatar);
+      character.add(tag);
       const heading = (seed % 360) * (Math.PI / 180);
       character.userData = {
         avatarData: avatar,
         isOwn,
         body,
+        tag,
         heading,
         wanderHeading: heading,
         walkSpeed: 0.25 + (seed % 35) / 100,
@@ -636,6 +926,7 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
         world.modelLoader.load(avatar.model, gltf => {
           if (world.characters.get(avatar.id) !== character) return;
           const uploadedAvatar = gltf.scene;
+          fixAvatarMaterials(gltf, world.maxAnisotropy);
           const avatarBounds = new THREE.Box3().setFromObject(uploadedAvatar);
           const avatarSize = avatarBounds.getSize(new THREE.Vector3());
           const avatarCenter = avatarBounds.getCenter(new THREE.Vector3());
@@ -646,21 +937,45 @@ export default function CommunityCourt({ avatars = [], view = 'overview', ownerI
             if (!object.isMesh) return;
             object.castShadow = true;
             object.receiveShadow = true;
-            const materials = Array.isArray(object.material) ? object.material : [object.material];
-            materials.forEach(material => { if (material?.map) material.map.anisotropy = world.maxAnisotropy; });
           });
+          const holder = new THREE.Group();
+          holder.add(uploadedAvatar);
           body.visible = false;
-          character.add(uploadedAvatar);
+          character.add(holder);
+          character.userData.holder = holder;
           if (gltf.animations?.length) {
             const mixer = new THREE.AnimationMixer(uploadedAvatar);
             const walkingClip = gltf.animations.find(clip => /walk|run|locomotion/i.test(clip.name)) || gltf.animations[0];
             character.userData.mixer = mixer;
             character.userData.action = mixer.clipAction(walkingClip).play();
+            character.userData.action.setEffectiveWeight(0);
+          } else {
+            const rig = setupRig(uploadedAvatar);
+            if (rig) {
+              // Turn the model so its front (from the hips) faces the walking direction.
+              const facing = new THREE.Vector3().crossVectors(rig.left, new THREE.Vector3(0, 1, 0));
+              holder.rotation.y = -Math.atan2(facing.x, facing.z);
+              character.userData.rig = rig;
+            }
           }
         }, undefined, error => console.warn('Avatar model fallback:', error));
       }
     });
   }, [avatars, ownerId]);
+
+  // ข้อความแชทใหม่ลอยขึ้นเหนือหัวตัวละครของคนที่ส่ง
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const now = Date.now();
+    messages.forEach(message => {
+      if (shownMessagesRef.current.has(message.id)) return;
+      shownMessagesRef.current.add(message.id);
+      if (!message.text || now - (message.createdAt || 0) > 20000) return;
+      const character = [...world.characters.values()].find(item => item.userData.avatarData.ownerId === message.senderId);
+      if (character) showChatBubble(character, message.text);
+    });
+  }, [messages]);
 
   return (
     <div className="absolute inset-0 overflow-hidden">

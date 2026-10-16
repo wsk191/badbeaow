@@ -25,7 +25,7 @@ export default function CommunityOverlay() {
         </div>
         <div className={`community-grid flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-0 md:grid md:p-3 ${communityPanelOpen && !isCommunityFullscreen ? 'md:grid-cols-[1fr_340px]' : ''} ${isCommunityFullscreen ? 'block' : ''}`}>
           <div className={`relative overflow-hidden bg-[#dff4f0] shadow-inner ${isCommunityFullscreen ? 'h-screen min-h-0 rounded-none' : 'min-h-0 flex-1 md:min-h-[calc(100vh-120px)] md:rounded-3xl'}`}>
-            <CommunityCourt avatars={communityAvatars} view={communityView} ownerId={communityOwnerId} onAvatarSelect={handleCommunityAvatarSelect} />
+            <CommunityCourt avatars={communityAvatars} messages={displayedCommunityMessages} view={communityView} ownerId={communityOwnerId} onAvatarSelect={handleCommunityAvatarSelect} />
             <div className={`${isCommunityFullscreen ? 'hidden' : 'pointer-events-none absolute left-3 top-3 max-w-[calc(100%-1.5rem)] rounded-2xl bg-slate-950/75 px-3 py-2 text-white md:left-4 md:top-4 md:px-3.5 md:py-2.5'}`}><div className="text-sm font-black">ศูนย์กีฬาคอมมู 3D</div><div className="mt-1 text-[11px] text-white/75 md:text-xs">ออนไลน์ {communityAvatars.length} ตัวละคร · แตะตัวละครเพื่อดูรายละเอียด</div></div>
             <div className={`${isCommunityFullscreen ? 'hidden' : 'absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-2xl bg-slate-950/80 p-1.5 backdrop-blur-sm'}`}>{[['overview', 'ภาพรวม'], ['badminton', 'สนามแบด'], ['futsal', 'ฟุตซอล'], ['basketball', 'บาส'], ['rest', 'โซนพัก']].map(([key, label]) => <button key={key} type="button" onClick={() => setCommunityView(key)} className={`rounded-xl px-3 py-2 text-[10px] font-bold ${communityView === key ? 'bg-emerald-400 text-slate-950' : 'text-white/75 hover:bg-white/10'}`}>{label}</button>)}</div>
             {!communityPanelOpen && !isCommunityFullscreen && (
@@ -38,7 +38,7 @@ export default function CommunityOverlay() {
               return (
                 <div className="absolute left-1/2 top-20 z-30 w-[min(calc(100%-2rem),380px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
                   <div className="flex items-start gap-3 bg-gradient-to-r from-slate-950 via-indigo-950 to-emerald-900 p-4 text-white">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl font-black shadow-inner" style={{ background: selected.shirt || '#3c83ee' }}>{(selected.name || '?').slice(0, 1)}</div>
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-emerald-500 text-2xl font-black shadow-inner">{(selected.name || '?').slice(0, 1)}</div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2"><h3 className="truncate text-lg font-black">{selected.name}</h3><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-base font-black text-white shadow-[0_0_12px_rgba(255,255,255,0.55)] ring-2 ring-white ${badge.className}`}>{badge.symbol}</span></div>
                       <div className="mt-0.5 text-xs text-white/70">{selected.gender || 'ไม่ระบุเพศ'}{selected.ownerId === communityOwnerId ? ' · ตัวละครของคุณ' : ''}</div>
@@ -47,11 +47,7 @@ export default function CommunityOverlay() {
                   </div>
                   <div className="space-y-3 p-4">
                     <p className="text-base leading-7 text-slate-700">{selected.description || 'ยังไม่มีคำอธิบาย'}</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-slate-400">ชุด</div><div className="mt-0.5 font-bold text-slate-800">{selected.outfit || 'เสื้อยืด + กางเกงขาสั้น'}</div></div>
-                      <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-slate-400">โมเดล</div><div className="mt-0.5 truncate font-bold capitalize text-slate-800">{modelName}</div></div>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-slate-500">{[['shirt', 'เสื้อ'], ['pants', 'กางเกง'], ['hair', 'ผม'], ['skin', 'ผิว']].filter(([key]) => selected[key]).map(([key, label]) => <span key={key} className="flex items-center gap-1.5"><span className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ background: selected[key] }} />{label}</span>)}</div>
+                    <div className="rounded-2xl bg-slate-50 p-2.5 text-xs"><div className="text-slate-400">โมเดล</div><div className="mt-0.5 truncate font-bold capitalize text-slate-800">{modelName}</div></div>
                   </div>
                 </div>
               );
