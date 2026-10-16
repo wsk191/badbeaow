@@ -27,7 +27,6 @@ export default function BadmintonApp() {
   const [splashComplete, setSplashComplete] = useState(false);
   const [splashExiting, setSplashExiting] = useState(false);
   const [splashVideoDone, setSplashVideoDone] = useState(false);
-  const [showCourtOneAd, setShowCourtOneAd] = useState(false);
   const [paymentQrCode, setPaymentQrCode] = useState('');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentPlayerId, setPaymentPlayerId] = useState('');
@@ -547,16 +546,6 @@ export default function BadmintonApp() {
     const fallbackTimer = setTimeout(() => setSplashVideoDone(true), 30000);
     return () => clearTimeout(fallbackTimer);
   }, [selectedCourtId]);
-
-  useEffect(() => {
-    if (loading || selectedCourtId !== 'court-1' || !splashComplete) {
-      setShowCourtOneAd(false);
-      return undefined;
-    }
-    setShowCourtOneAd(true);
-    const adTimer = setTimeout(() => setShowCourtOneAd(false), 10000);
-    return () => clearTimeout(adTimer);
-  }, [loading, selectedCourtId, splashComplete]);
 
   useEffect(() => {
     const dateTimer = setInterval(() => {
@@ -1993,11 +1982,11 @@ export default function BadmintonApp() {
     setPaymentInputs, setPaymentPlayerId, setPaymentReviewAmounts, setPlayerToDelete,
     setPlayerToEdit, setPreviewSlipImage, setQueueToDelete, setScheduleEndTime,
     setScheduleStartTime, setSearchDraftQuery, setSearchPlayerQuery,
-    setSelectedCommunityAvatar, setSelectedCourtId, setShowAdminGuide, setShowCourtOneAd,
+    setSelectedCommunityAvatar, setSelectedCourtId, setShowAdminGuide,
     setShowDeleteAllPlayersModal, setShowDeleteAllQueueModal, setShowFinanceModal,
     setShowGuide, setShowLoginModal, setShowMoreMenu, setShowPaymentForm, setSplashVideoDone,
     setSuperAdminCourtId, setSuperAdminSection, setSuperAdminShowHome, setTotalCourtBill,
-    showAdminGuide, showCourtOneAd, showDeleteAllPlayersModal, showDeleteAllQueueModal,
+    showAdminGuide, showDeleteAllPlayersModal, showDeleteAllQueueModal,
     showFinanceModal, showLoginModal, showMoreMenu, showPaymentForm, showSplash, splashExiting,
     submitPaymentRequest, superAdminCourt, superAdminCourtId, superAdminSection, toast,
     todayKey, toggleCommunityFullscreen, toggleMaintenanceMode, togglePresence, totalCourtBill,

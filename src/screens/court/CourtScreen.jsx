@@ -1,5 +1,4 @@
 import { Check, X } from 'lucide-react';
-import CourtOneAd from './CourtOneAd';
 import CourtHeader from './CourtHeader';
 import ExercisePlanner from '../../components/ExercisePlanner';
 import DashboardTab from './DashboardTab';
@@ -26,7 +25,7 @@ export default function CourtScreen() {
   const {
     activeTab, guideModal, isAdmin, isDesktop, playerToDelete, playerToEdit, previewSlipImage,
     queueToDelete, selectedCourt, selectedCourtId, setShowAdminGuide, setSplashVideoDone,
-    showAdminGuide, showCourtOneAd, showDeleteAllPlayersModal, showDeleteAllQueueModal,
+    showAdminGuide, showDeleteAllPlayersModal, showDeleteAllQueueModal,
     showFinanceModal, showLoginModal, showMoreMenu, showPaymentForm, showSplash, splashExiting,
     toast, userRole,
   } = useApp();
@@ -57,9 +56,6 @@ export default function CourtScreen() {
           </div>
         </div>
       )}
-
-      {/* โฆษณา เจ๊เนยสั่งลุย (สนาม 1) */}
-      {showCourtOneAd && <CourtOneAd />}
 
       {/* Toast Notification */}
       <div className={`fixed top-6 left-1/2 z-50 transition-all duration-300 ease-out ${toast.message ? 'opacity-100 scale-100 animate-jelly' : 'opacity-0 -translate-y-8 scale-95 pointer-events-none'}`}>
