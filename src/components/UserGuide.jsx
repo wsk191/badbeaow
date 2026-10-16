@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, X, ChevronLeft, ChevronRight, Users, Swords, Trophy, Wallet, Dumbbell, Activity, LayoutDashboard, ListOrdered, Check, Crown, QrCode, Upload, MessageCircle, Hand } from 'lucide-react';
+import { BookOpen, X, ChevronLeft, ChevronRight, Users, Swords, Trophy, Wallet, Dumbbell, Activity, LayoutDashboard, ListOrdered, Check, Crown, QrCode, Upload, MessageCircle, Hand, ShieldCheck, Lock, Mail, Key, Plus, Edit2, Trash2, GripVertical, ArrowUp, ArrowDown, Receipt, AlertTriangle, Eye } from 'lucide-react';
 
 const Toggle = ({ on }) => (
   <span className={`relative inline-block h-5 w-9 rounded-full transition ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}>
@@ -149,9 +149,116 @@ const SECTIONS = [
   { id: 'community', icon: Activity, title: 'ลานกีฬาชุมชน', Illustration: IllustrationCommunity, steps: ['ที่หน้าแรก กด "เข้าสู่ลานกีฬาชุมชน"', 'กดปุ่ม "ตัวละคร" เพื่อสร้างตัวละครของคุณ', 'เดินสำรวจด้วยจอยสติ๊กและคุยกับคนอื่นในแชทโลก'] },
 ];
 
-export default function UserGuide({ accent = 'from-purple-600 to-indigo-700', onClose }) {
+const Card = ({ children, className = '' }) => <div className={`rounded-2xl bg-white p-3 shadow ring-1 ring-black/5 ${className}`}>{children}</div>;
+
+const IllustrationAdminLogin = () => (
+  <div className="relative mx-auto w-full max-w-[260px] space-y-2">
+    <div className="flex items-center justify-between rounded-2xl bg-white px-3 py-2 shadow ring-1 ring-black/5">
+      <span className="text-xs font-black text-purple-700">คอร์ด 1</span>
+      <span className="relative flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-600 ring-4 ring-amber-300/70"><Lock size={11} /> เข้าสู่ระบบแอดมิน<Tap className="-bottom-5 -right-3" /></span>
+    </div>
+    <Card className="space-y-1.5">
+      <div className="text-[11px] font-black text-gray-800">เข้าสู่ระบบผู้ดูแล</div>
+      <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] text-gray-400"><Mail size={11} /> อีเมล</div>
+      <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] text-gray-400"><Key size={11} /> ••••••••</div>
+      <div className="rounded-lg bg-slate-900 py-1.5 text-center text-[10px] font-bold text-white">เข้าสู่ระบบ</div>
+    </Card>
+  </div>
+);
+
+const IllustrationAdminPlayers = () => (
+  <Card className="relative mx-auto w-full max-w-[270px]">
+    <div className="mb-1 text-[11px] font-black text-gray-800">รายชื่อทั้งหมด</div>
+    {[['เจ๊เนย', true, 0], ['พี่บอล', true, 30], ['น้องมิว', false, 0]].map(([name, on, debt], i) => (
+      <div key={name} className="flex items-center justify-between border-t border-gray-100 py-2">
+        <div><div className="text-[11px] font-bold text-gray-800">{name}</div>{debt > 0 && <div className="text-[9px] font-bold text-red-500">ค้างจ่าย {debt} ฿</div>}</div>
+        <div className="flex items-center gap-1">
+          <span className={`relative flex items-center gap-0.5 rounded-lg bg-emerald-50 px-1.5 py-1 text-[9px] font-bold text-emerald-600 ${i === 0 ? 'ring-2 ring-amber-300' : ''}`}><Plus size={9} />10฿{i === 0 && <Tap className="-right-3 -top-4" />}</span>
+          <Toggle on={on} />
+          <span className="rounded-md bg-blue-50 p-1 text-blue-500"><Edit2 size={10} /></span>
+          <span className="rounded-md bg-red-50 p-1 text-red-400"><Trash2 size={10} /></span>
+        </div>
+      </div>
+    ))}
+  </Card>
+);
+
+const IllustrationAdminQueue = () => (
+  <div className="relative mx-auto w-full max-w-[260px] space-y-1.5">
+    {[['เจ๊เนย & พี่บอล', false], ['ลุงต๋อง & น้องฟ้า', true], ['น้องมิว & พี่แจ็ค', false]].map(([pair, moving], i) => (
+      <div key={pair} className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 shadow-sm ${moving ? '-translate-y-1 translate-x-2 rotate-1 border-fuchsia-300 bg-fuchsia-50 shadow-lg' : 'border-gray-100 bg-white'}`}>
+        <GripVertical size={14} className={moving ? 'text-fuchsia-500' : 'text-gray-300'} />
+        <span className={`flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-black ${moving ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-purple-50 text-purple-700'}`}>{i + 1}</span>
+        <span className="flex-1 text-[10px] font-bold text-gray-700">{pair}</span>
+        <span className="flex flex-col text-gray-400"><ArrowUp size={10} /><ArrowDown size={10} /></span>
+        <Trash2 size={11} className="text-red-400" />
+      </div>
+    ))}
+    <Tap className="left-0 top-9" />
+  </div>
+);
+
+const IllustrationAdminQr = () => (
+  <Card className="relative mx-auto w-full max-w-[230px] text-center">
+    <div className="text-[11px] font-black text-gray-800">QR พร้อมเพย์สนามนี้</div>
+    <div className="mx-auto my-2 flex h-20 w-20 items-center justify-center rounded-xl border border-gray-200 bg-gray-50"><QrCode size={56} className="text-slate-800" /></div>
+    <div className="flex gap-1.5">
+      <span className="relative flex-1 rounded-lg bg-emerald-600 py-1.5 text-[10px] font-bold text-white ring-4 ring-amber-300/70">เปลี่ยนรูป QR<Tap className="-bottom-5 right-0" /></span>
+      <span className="rounded-lg bg-red-50 px-2 py-1.5 text-[10px] font-bold text-red-600">ลบ QR</span>
+    </div>
+  </Card>
+);
+
+const IllustrationAdminFees = () => (
+  <div className="relative mx-auto w-full max-w-[260px] space-y-2">
+    <div className="relative rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 p-3 text-center text-white shadow">
+      <div className="text-[10px] font-bold text-white/80">บวกหนี้ให้ทุกคนที่มาตีวันนี้</div>
+      <div className="mx-auto mt-1.5 w-fit rounded-lg bg-white px-3 py-1 text-[11px] font-black text-emerald-700 ring-4 ring-amber-300/70">+ 10 บาท</div>
+      <Tap className="-bottom-3 right-12" />
+    </div>
+    <Card>
+      <div className="flex items-center justify-between text-[11px]"><span className="font-bold text-gray-800">พี่บอล</span><span className="rounded-md bg-red-50 px-2 py-0.5 font-bold text-red-500">30.00 ฿</span></div>
+      <div className="mt-1.5 flex gap-1.5"><span className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">30</span><span className="rounded-lg bg-purple-600 px-3 py-1 text-[10px] font-bold text-white">จ่าย</span></div>
+    </Card>
+  </div>
+);
+
+const IllustrationAdminSlips = () => (
+  <Card className="relative mx-auto w-full max-w-[250px] space-y-2">
+    <div className="flex items-center justify-between"><span className="text-[11px] font-black text-gray-800">เจ๊เนย</span><span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 ring-1 ring-amber-200">รอตรวจสลิป</span></div>
+    <div className="relative flex h-16 items-center justify-center rounded-lg border bg-gradient-to-b from-sky-50 to-white"><Receipt size={26} className="text-sky-500" /><span className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded bg-black/60 px-1 text-[8px] text-white"><Eye size={8} /> กดเพื่อขยาย</span></div>
+    <div className="flex items-center gap-1.5 text-[9px] text-gray-500">ยอดที่ได้รับจริง <span className="flex-1 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-bold text-gray-700">30</span></div>
+    <div className="flex gap-1.5">
+      <span className="relative flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 py-1.5 text-[10px] font-bold text-white ring-4 ring-amber-300/70"><Check size={11} /> ยืนยันได้รับเงิน<Tap className="-bottom-5 right-2" /></span>
+      <span className="rounded-lg bg-red-50 px-2 py-1.5 text-[10px] font-bold text-red-600">ปฏิเสธ</span>
+    </div>
+  </Card>
+);
+
+const IllustrationAdminReset = () => (
+  <div className="mx-auto w-full max-w-[250px] space-y-2">
+    <div className="flex items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 py-2 text-[10px] font-bold text-red-600"><AlertTriangle size={13} /> ล้างข้อมูลผู้เล่นทั้งหมด (รีเซ็ตระบบ)</div>
+    <Card className="border-t-4 border-red-500">
+      <div className="flex items-center gap-1.5 text-[11px] font-black text-red-600"><AlertTriangle size={14} /> อันตราย! ล้างระบบทั้งหมด?</div>
+      <div className="mt-1 text-[9px] leading-4 text-gray-500">จะลบรายชื่อผู้เล่นทุกคน คิวรอ และสถานะสนามปัจจุบัน</div>
+      <div className="mt-2 flex gap-1.5"><span className="flex-1 rounded-lg bg-gray-100 py-1.5 text-center text-[10px] font-bold text-gray-600">ยกเลิก</span><span className="flex-1 rounded-lg bg-red-600 py-1.5 text-center text-[10px] font-bold text-white">ล้างระบบ</span></div>
+    </Card>
+  </div>
+);
+
+const ADMIN_SECTIONS = [
+  { id: 'login', icon: Lock, title: 'เข้าสู่ระบบแอดมิน', Illustration: IllustrationAdminLogin, steps: ['ในหน้าคอร์ด กด "เข้าสู่ระบบแอดมิน" ที่มุมขวาบน', 'กรอกอีเมลและรหัสผ่านที่ได้รับจาก SuperAdmin', 'ถ้าไม่ได้ใช้งาน 1 ชั่วโมง ระบบจะออกจากระบบให้เอง'] },
+  { id: 'players', icon: Users, title: 'จัดการผู้เล่น', Illustration: IllustrationAdminPlayers, steps: ['เมนู "รายชื่อ" พิมพ์ชื่อแล้วกด "เพิ่ม" เพื่อเพิ่มผู้เล่นใหม่', 'ปุ่มดินสอใช้แก้ชื่อ ปุ่มถังขยะใช้ลบผู้เล่น', 'ปุ่ม "+10฿" บวกค่าสนามให้ผู้เล่นทีละคน'] },
+  { id: 'queue', icon: ListOrdered, title: 'จัดลำดับคิว', Illustration: IllustrationAdminQueue, steps: ['บนคอม ลากที่จุดจับ ⋮⋮ เพื่อย้ายคู่ไปลำดับอื่น', 'บนโทรศัพท์ ใช้ปุ่มลูกศรขึ้น/ลงแทนการลาก', 'คู่ที่ถูกย้ายจะขึ้นสีชมพูให้ทุกคนเห็นว่าถูกเลื่อน'] },
+  { id: 'qr', icon: QrCode, title: 'ตั้งค่า QR รับเงิน', Illustration: IllustrationAdminQr, steps: ['เมนู "คิดเงิน" กด "เพิ่มรูป QR" แล้วเลือกรูป QR พร้อมเพย์', 'ผู้เล่นจะเห็น QR นี้ตอนกดจ่ายเงิน', 'เปลี่ยนหรือลบ QR ได้ตลอด'] },
+  { id: 'fees', icon: Wallet, title: 'คิดค่าสนาม', Illustration: IllustrationAdminFees, steps: ['กด "บวกหนี้ 10 บาท" เพื่อเพิ่มยอดให้ทุกคนที่เช็คชื่อวันนี้', 'คนที่จ่ายเงินสด ให้ใส่ยอดแล้วกด "จ่าย"', 'ยอดค้างของผู้เล่นจะลดลงทันที'] },
+  { id: 'slips', icon: Receipt, title: 'ตรวจสลิปโอนเงิน', Illustration: IllustrationAdminSlips, steps: ['กด "ตรวจสลิปแจ้งโอน" (ตัวเลขบนปุ่มคือจำนวนสลิปที่รอ)', 'แตะรูปสลิปเพื่อขยาย แล้วใส่ยอดที่ได้รับจริง', 'กด "ยืนยันได้รับเงิน" หรือ "ปฏิเสธ" ดูย้อนหลังได้ที่ประวัติการเงิน'] },
+  { id: 'reset', icon: AlertTriangle, title: 'รีเซ็ตระบบ', Illustration: IllustrationAdminReset, steps: ['ปุ่ม "ล้างข้อมูลผู้เล่นทั้งหมด" อยู่ท้ายเมนู "รายชื่อ"', 'ระบบจะถามยืนยันก่อนทุกครั้ง', 'ลบแล้วกู้คืนไม่ได้ ใช้เมื่อต้องการเริ่มใหม่ทั้งคอร์ดเท่านั้น'] },
+];
+
+function GuideModal({ sections, title, subtitle, icon: TitleIcon, closeLabel, accent = 'from-purple-600 to-indigo-700', onClose }) {
   const [index, setIndex] = useState(0);
-  const section = SECTIONS[index];
+  const section = sections[index];
   const { Illustration } = section;
   const chipsRef = useRef(null);
   useEffect(() => {
@@ -163,13 +270,13 @@ export default function UserGuide({ accent = 'from-purple-600 to-indigo-700', on
         <div className={`bg-gradient-to-br ${accent} px-5 pb-3 pt-4 text-white`}>
           <div className="flex items-start justify-between">
             <div>
-              <div className="flex items-center gap-2"><BookOpen size={20} /><h2 className="text-lg font-bold">คู่มือการใช้งาน</h2></div>
-              <p className="text-xs text-white/75">BADBEAOW ระบบจัดการคิวตีแบด</p>
+              <div className="flex items-center gap-2"><TitleIcon size={20} /><h2 className="text-lg font-bold">{title}</h2></div>
+              <p className="text-xs text-white/75">{subtitle}</p>
             </div>
-            <button onClick={onClose} className="rounded-lg p-1 text-white/75 hover:bg-white/10 hover:text-white" aria-label="ปิดคู่มือ"><X size={20} /></button>
+            <button onClick={onClose} className="rounded-lg p-1 text-white/75 hover:bg-white/10 hover:text-white" aria-label={closeLabel}><X size={20} /></button>
           </div>
           <div ref={chipsRef} className="-mx-5 mt-3 flex gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
-            {SECTIONS.map((item, i) => {
+            {sections.map((item, i) => {
               const Icon = item.icon;
               return (
                 <button key={item.id} type="button" onClick={() => setIndex(i)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${i === index ? 'bg-white text-gray-900 shadow' : 'bg-white/15 text-white/85 hover:bg-white/25'}`}>
@@ -186,7 +293,7 @@ export default function UserGuide({ accent = 'from-purple-600 to-indigo-700', on
               <Illustration />
             </div>
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-widest text-purple-500">หัวข้อ {index + 1} / {SECTIONS.length}</div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-purple-500">หัวข้อ {index + 1} / {sections.length}</div>
               <h3 className="mt-1 text-xl font-black text-gray-900">{section.title}</h3>
               <ol className="mt-4 space-y-3">
                 {section.steps.map((step, i) => (
@@ -202,12 +309,20 @@ export default function UserGuide({ accent = 'from-purple-600 to-indigo-700', on
 
         <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button type="button" onClick={() => setIndex(i => i - 1)} disabled={index === 0} className="flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 disabled:invisible"><ChevronLeft size={16} /> ก่อนหน้า</button>
-          <div className="flex gap-1.5">{SECTIONS.map((item, i) => <span key={item.id} className={`h-1.5 rounded-full transition-all ${i === index ? 'w-5 bg-purple-600' : 'w-1.5 bg-gray-300'}`} />)}</div>
-          {index < SECTIONS.length - 1
+          <div className="flex gap-1.5">{sections.map((item, i) => <span key={item.id} className={`h-1.5 rounded-full transition-all ${i === index ? 'w-5 bg-purple-600' : 'w-1.5 bg-gray-300'}`} />)}</div>
+          {index < sections.length - 1
             ? <button type="button" onClick={() => setIndex(i => i + 1)} className="flex items-center gap-1 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700">ถัดไป <ChevronRight size={16} /></button>
             : <button type="button" onClick={onClose} className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700">เข้าใจแล้ว</button>}
         </div>
       </div>
     </div>
   );
+}
+
+export default function UserGuide(props) {
+  return <GuideModal {...props} sections={SECTIONS} title="คู่มือการใช้งาน" subtitle="BADBEAOW ระบบจัดการคิวตีแบด" icon={BookOpen} closeLabel="ปิดคู่มือ" />;
+}
+
+export function AdminGuide(props) {
+  return <GuideModal {...props} sections={ADMIN_SECTIONS} title="คู่มือแอดมิน" subtitle="สิทธิ์และขั้นตอนการดูแลสนาม" icon={ShieldCheck} closeLabel="ปิดคู่มือแอดมิน" />;
 }
