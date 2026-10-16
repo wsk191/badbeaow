@@ -61,7 +61,7 @@
       "players": {
         ".read": "auth != null",
         "$playerId": {
-          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists() || (newData.exists() && newData.child('debt').val() === data.child('debt').val()) || (!newData.exists() && data.child('debt').val() === 0))"
+          ".write": "auth != null && ((root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists()) || (!data.exists() && newData.exists() && (!newData.child('debt').exists() || newData.child('debt').val() === 0)) || (data.exists() && newData.exists() && newData.child('debt').val() === data.child('debt').val()))"
         }
       },
       "queue": {
@@ -84,7 +84,7 @@
           "players": {
             ".read": "auth != null",
             "$playerId": {
-              ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists() || (newData.exists() && newData.child('debt').val() === data.child('debt').val()) || (!newData.exists() && data.child('debt').val() === 0))"
+              ".write": "auth != null && ((root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists()) || (!data.exists() && newData.exists() && (!newData.child('debt').exists() || newData.child('debt').val() === 0)) || (data.exists() && newData.exists() && newData.child('debt').val() === data.child('debt').val()))"
             }
           },
           "queue": {
@@ -101,8 +101,38 @@
               ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists() || (!data.exists() && newData.child('playerId').isString()))",
               ".validate": "newData.hasChildren(['playerId', 'playerName', 'slipImage', 'slipHash', 'status', 'createdAt']) && newData.child('playerId').isString() && newData.child('playerName').isString() && newData.child('slipImage').isString() && newData.child('slipHash').isString() && newData.child('status').isString() && newData.child('createdAt').isNumber()"
             }
+          },
+          "matches": {
+            ".read": "auth != null",
+            ".indexOn": [
+              "date"
+            ],
+            "$matchId": {
+              ".write": "auth != null && ((root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists()) || !data.exists() || (!newData.exists() && data.child('at').val() > now - 180000))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['at', 'date', 'teamA', 'teamB', 'winner']) && newData.child('at').isNumber() && newData.child('at').val() <= now + 60000 && newData.child('winner').val().matches(/^[AB]$/))"
+            }
+          },
+          "settings": {
+            ".read": "auth != null",
+            ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child($courtId).child(auth.uid).exists())",
+            ".validate": "newData.hasChildren(['feePerPerson', 'shuttlePrice']) && newData.child('feePerPerson').isNumber() && newData.child('feePerPerson').val() >= 0 && newData.child('feePerPerson').val() <= 10000 && newData.child('shuttlePrice').isNumber() && newData.child('shuttlePrice').val() >= 0 && newData.child('shuttlePrice').val() <= 10000"
           }
         }
+      },
+      "matches": {
+        ".read": "auth != null",
+        ".indexOn": [
+          "date"
+        ],
+        "$matchId": {
+          ".write": "auth != null && ((root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists()) || !data.exists() || (!newData.exists() && data.child('at').val() > now - 180000))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['at', 'date', 'teamA', 'teamB', 'winner']) && newData.child('at').isNumber() && newData.child('at').val() <= now + 60000 && newData.child('winner').val().matches(/^[AB]$/))"
+        }
+      },
+      "settings": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'superAdmin' || root.child('boardAdmins').child('court-1').child(auth.uid).exists())",
+        ".validate": "newData.hasChildren(['feePerPerson', 'shuttlePrice']) && newData.child('feePerPerson').isNumber() && newData.child('feePerPerson').val() >= 0 && newData.child('feePerPerson').val() <= 10000 && newData.child('shuttlePrice').isNumber() && newData.child('shuttlePrice').val() >= 0 && newData.child('shuttlePrice').val() <= 10000"
       }
     },
     "adminRequests": {

@@ -142,8 +142,8 @@ const SECTIONS = [
   { id: 'court', icon: LayoutDashboard, title: 'เลือกคอร์ด', Illustration: IllustrationCourts, steps: ['ที่หน้าแรก แตะการ์ดคอร์ดที่กำลังเล่นอยู่', 'แต่ละคอร์ดมีคิวและรายชื่อแยกกัน', 'กดปุ่มย้อนกลับมุมซ้ายบนเพื่อเปลี่ยนคอร์ด'] },
   { id: 'players', icon: Users, title: 'เช็คชื่อผู้เล่น', Illustration: IllustrationPlayers, steps: ['เปิดเมนู "รายชื่อ" ถ้ายังไม่มีชื่อ ให้พิมพ์ชื่อแล้วกด "เพิ่ม"', 'เปิดสวิตช์ข้างชื่อคนที่มาตีวันนี้', 'เฉพาะคนที่เช็คชื่อแล้วถึงจะจับคู่ลงคิวได้'] },
   { id: 'queue', icon: ListOrdered, title: 'จับคู่เข้าคิว', Illustration: IllustrationQueue, steps: ['ไปที่เมนู "คิวสนาม"', 'แตะเลือกผู้เล่น 2 คนเพื่อเป็นคู่กัน', 'กด "เพิ่มเข้าคิวรอ" คู่จะต่อท้ายคิวตามลำดับ'] },
-  { id: 'match', icon: Swords, title: 'ลงสนามและบันทึกผล', Illustration: IllustrationMatch, steps: ['เมื่อมีคิวอย่างน้อย 2 คู่ กด "ดึงคิวที่ 1 & 2 ลงสนาม"', 'จบเกมแล้วกด "ทีม A ชนะ" หรือ "ทีม B ชนะ"', 'ผู้ชนะอยู่สนามต่อ (WINNER STAYS ON) ผู้แพ้กลับไปต่อคิว'] },
-  { id: 'ranking', icon: Trophy, title: 'จัดอันดับ', Illustration: IllustrationRanking, steps: ['เปิดเมนู "จัดอันดับ"', 'ยิ่งชนะบ่อย ค่าพลังยิ่งสูง อันดับยิ่งขึ้น', 'ผลทุกเกมที่บันทึกจะนับรวมให้อัตโนมัติ'] },
+  { id: 'match', icon: Swords, title: 'ลงสนามและบันทึกผล', Illustration: IllustrationMatch, steps: ['เมื่อมีคิวอย่างน้อย 2 คู่ กด "ดึงคิวที่ 1 และ 2 ลงสนาม"', 'จบเกมแล้วกด "ทีม A ชนะ" หรือ "ทีม B ชนะ" ผู้ชนะอยู่ต่อ ผู้แพ้กลับไปต่อคิว', 'กดผิด? กด "ย้อนผล" ได้ภายใน 2 นาที · เลือกชื่อในช่อง "แจ้งเตือนเมื่อใกล้ถึงคิว" เครื่องจะสั่นเมื่อถึงคิว'] },
+  { id: 'ranking', icon: Trophy, title: 'จัดอันดับ', Illustration: IllustrationRanking, steps: ['เปิดเมนู "จัดอันดับ"', 'ดูจำนวนชนะ แพ้ และ % ชนะของแต่ละคน', 'สลับเรียงตาม "ชนะมากสุด" หรือ "% ชนะ" ได้'] },
   { id: 'payment', icon: Wallet, title: 'คิดเงินและแจ้งโอน', Illustration: IllustrationPayment, steps: ['เปิดเมนู "คิดเงิน" เพื่อดูยอดที่ต้องจ่าย', 'สแกน QR พร้อมเพย์ของสนาม แล้วแนบรูปสลิป', 'แอดมินตรวจสลิปแล้วยอดค้างจะถูกหักออก'] },
   { id: 'exercise', icon: Dumbbell, title: 'แผนออกกำลังกาย', Illustration: IllustrationExercise, steps: ['เปิดเมนู "ออกกำลัง"', 'กรอกอายุ น้ำหนัก ส่วนสูง และเป้าหมาย', 'ระบบจัดตารางฝึกทั้งเดือน แตะวันที่เพื่อดูรายละเอียด'] },
   { id: 'community', icon: Activity, title: 'ลานกีฬาชุมชน', Illustration: IllustrationCommunity, steps: ['ที่หน้าแรก กด "เข้าสู่ลานกีฬาชุมชน"', 'กดปุ่ม "ตัวละคร" เพื่อสร้างตัวละครของคุณ', 'เดินสำรวจด้วยจอยสติ๊กและคุยกับคนอื่นในแชทโลก'] },
@@ -213,7 +213,7 @@ const IllustrationAdminFees = () => (
   <div className="relative mx-auto w-full max-w-[260px] space-y-2">
     <div className="relative rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 p-3 text-center text-white shadow">
       <div className="text-[10px] font-bold text-white/80">บวกหนี้ให้ทุกคนที่มาตีวันนี้</div>
-      <div className="mx-auto mt-1.5 w-fit rounded-lg bg-white px-3 py-1 text-[11px] font-black text-emerald-700 ring-4 ring-amber-300/70">+ 10 บาท</div>
+      <div className="mx-auto mt-1.5 w-fit rounded-lg bg-white px-3 py-1 text-[11px] font-black text-emerald-700 ring-4 ring-amber-300/70">เก็บคนละ 20 บาท</div>
       <Tap className="-bottom-3 right-12" />
     </div>
     <Card>
@@ -248,10 +248,10 @@ const IllustrationAdminReset = () => (
 
 const ADMIN_SECTIONS = [
   { id: 'login', icon: Lock, title: 'เข้าสู่ระบบแอดมิน', Illustration: IllustrationAdminLogin, steps: ['ในหน้าคอร์ด กด "เข้าสู่ระบบแอดมิน" ที่มุมขวาบน', 'กรอกอีเมลและรหัสผ่านที่ได้รับจาก SuperAdmin', 'ถ้าไม่ได้ใช้งาน 1 ชั่วโมง ระบบจะออกจากระบบให้เอง'] },
-  { id: 'players', icon: Users, title: 'จัดการผู้เล่น', Illustration: IllustrationAdminPlayers, steps: ['เมนู "รายชื่อ" พิมพ์ชื่อแล้วกด "เพิ่ม" เพื่อเพิ่มผู้เล่นใหม่', 'ปุ่มดินสอใช้แก้ชื่อ ปุ่มถังขยะใช้ลบผู้เล่น', 'ปุ่ม "+10฿" บวกค่าสนามให้ผู้เล่นทีละคน'] },
+  { id: 'players', icon: Users, title: 'จัดการผู้เล่น', Illustration: IllustrationAdminPlayers, steps: ['เมนู "รายชื่อ" พิมพ์ชื่อแล้วกด "เพิ่ม" เพื่อเพิ่มผู้เล่นใหม่', 'ปุ่มดินสอใช้แก้ชื่อ ปุ่มถังขยะใช้ลบผู้เล่น (เฉพาะแอดมิน)', 'ปุ่ม "+฿" บวกค่าบำรุงตามราคาที่ตั้งไว้ให้ทีละคน'] },
   { id: 'queue', icon: ListOrdered, title: 'จัดลำดับคิว', Illustration: IllustrationAdminQueue, steps: ['บนคอม ลากที่จุดจับ ⋮⋮ เพื่อย้ายคู่ไปลำดับอื่น', 'บนโทรศัพท์ ใช้ปุ่มลูกศรขึ้น/ลงแทนการลาก', 'คู่ที่ถูกย้ายจะขึ้นสีชมพูให้ทุกคนเห็นว่าถูกเลื่อน'] },
   { id: 'qr', icon: QrCode, title: 'ตั้งค่า QR รับเงิน', Illustration: IllustrationAdminQr, steps: ['เมนู "คิดเงิน" กด "เพิ่มรูป QR" แล้วเลือกรูป QR พร้อมเพย์', 'ผู้เล่นจะเห็น QR นี้ตอนกดจ่ายเงิน', 'เปลี่ยนหรือลบ QR ได้ตลอด'] },
-  { id: 'fees', icon: Wallet, title: 'คิดค่าสนาม', Illustration: IllustrationAdminFees, steps: ['กด "บวกหนี้ 10 บาท" เพื่อเพิ่มยอดให้ทุกคนที่เช็คชื่อวันนี้', 'คนที่จ่ายเงินสด ให้ใส่ยอดแล้วกด "จ่าย"', 'ยอดค้างของผู้เล่นจะลดลงทันที'] },
+  { id: 'fees', icon: Wallet, title: 'คิดค่าสนาม', Illustration: IllustrationAdminFees, steps: ['ตั้ง "ค่าบำรุงต่อคน" และ "ราคาลูกขนไก่" ในเมนู "คิดเงิน"', 'กด "เก็บค่าบำรุง" ให้ทุกคนที่เช็คชื่อ · ตอนกดผลเลือกจำนวนลูก ระบบหาร 4 คนให้', 'รับเงินสด: ใส่ยอดแล้วกด "รับเงิน" ยอดค้างลดทันที'] },
   { id: 'slips', icon: Receipt, title: 'ตรวจสลิปโอนเงิน', Illustration: IllustrationAdminSlips, steps: ['กด "ตรวจสลิปแจ้งโอน" (ตัวเลขบนปุ่มคือจำนวนสลิปที่รอ)', 'แตะรูปสลิปเพื่อขยาย แล้วใส่ยอดที่ได้รับจริง', 'กด "ยืนยันได้รับเงิน" หรือ "ปฏิเสธ" ดูย้อนหลังได้ที่ประวัติการเงิน'] },
   { id: 'reset', icon: AlertTriangle, title: 'รีเซ็ตระบบ', Illustration: IllustrationAdminReset, steps: ['ปุ่ม "ล้างข้อมูลผู้เล่นทั้งหมด" อยู่ท้ายเมนู "รายชื่อ"', 'ระบบจะถามยืนยันก่อนทุกครั้ง', 'ลบแล้วกู้คืนไม่ได้ ใช้เมื่อต้องการเริ่มใหม่ทั้งคอร์ดเท่านั้น'] },
 ];

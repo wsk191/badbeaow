@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast, orderByChild, endAt } from 'firebase/database';
+import { ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast, orderByChild, endAt, increment } from 'firebase/database';
 import UserGuide from './components/UserGuide';
 import MaintenanceScreen from './screens/MaintenanceScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
@@ -69,6 +69,11 @@ export default function BadmintonApp() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [draftPair, setDraftPair] = useState([null, null]);
   const [totalCourtBill, setTotalCourtBill] = useState('');
+  const [courtSettings, setCourtSettings] = useState({ feePerPerson: 10, shuttlePrice: 0 });
+  const [matches, setMatches] = useState([]);
+  const [shuttlesUsed, setShuttlesUsed] = useState(1);
+  const [followPlayerId, setFollowPlayerIdState] = useState('');
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [paymentInputs, setPaymentInputs] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState({ message: null, type: 'success' });
@@ -916,8 +921,8 @@ export default function BadmintonApp() {
         const receivedAmount = Number(paymentReviewAmounts[request.id]);
         if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) throw new Error('กรุณาระบุยอดที่ได้รับจริง');
         updates.receivedAmount = receivedAmount;
-        updates.playerDebt = Math.max(0, (player.debt || 0) - receivedAmount);
-        await update(ref(db, `${courtRoot}/players/${request.playerId}`), { debt: updates.playerDebt });
+        const debtResult = await runTransaction(ref(db, `${courtRoot}/players/${request.playerId}/debt`), current => Math.max(0, Math.round(((Number(current) || 0) - receivedAmount) * 100) / 100));
+        updates.playerDebt = Number(debtResult.snapshot.val()) || 0;
       }
       await update(ref(db, `${courtRoot}/paymentRequests/${request.id}`), updates);
       setPaymentReviewAmounts(previous => ({ ...previous, [request.id]: '' }));
@@ -928,6 +933,30 @@ export default function BadmintonApp() {
       setIsProcessing(false);
     }
   };
+
+  // ราคาค่าสนาม/ค่าลูก และประวัติการแข่งของคอร์ดที่เลือก
+  useEffect(() => {
+    if (!user || !selectedCourtId) return undefined;
+    const unsubSettings = onValue(ref(db, `${courtRoot}/settings`), snapshot => {
+      const value = snapshot.val() || {};
+      setCourtSettings({ feePerPerson: Number(value.feePerPerson) || 10, shuttlePrice: Number(value.shuttlePrice) || 0 });
+    }, () => setCourtSettings({ feePerPerson: 10, shuttlePrice: 0 }));
+    const unsubMatches = onValue(query(ref(db, `${courtRoot}/matches`), limitToLast(80)), snapshot => {
+      const value = snapshot.val() || {};
+      setMatches(Object.entries(value).map(([id, match]) => ({ id, ...match })).sort((a, b) => (b.at || 0) - (a.at || 0)));
+    }, () => setMatches([]));
+    return () => { unsubSettings(); unsubMatches(); };
+  }, [user, selectedCourtId, courtRoot]);
+
+  useEffect(() => {
+    if (!selectedCourtId) return;
+    try { setFollowPlayerIdState(localStorage.getItem(`badbeaowFollow:${selectedCourtId}`) || ''); } catch { setFollowPlayerIdState(''); }
+  }, [selectedCourtId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Sync Database
   useEffect(() => {
@@ -1041,6 +1070,11 @@ export default function BadmintonApp() {
   }, [user, userRole, activeTab, getCourtRoot]);
 
   const presentPlayers = useMemo(() => players.filter(p => p.isPresent), [players]);
+  const todayMatches = useMemo(() => matches.filter(match => match.date === todayKey), [matches, todayKey]);
+  const gamesToday = useCallback(player => Number(player?.dailyGames?.[todayKey]) || 0, [todayKey]);
+  const UNDO_WINDOW_MS = 2 * 60 * 1000;
+  const lastResult = court?.lastResult || null;
+  const canUndoResult = Boolean(lastResult && (isAdmin || (!lastResult.charge && nowTick - lastResult.at < UNDO_WINDOW_MS)));
   
   const busyPlayerIds = useMemo(() => {
     const ids = new Set();
@@ -1191,7 +1225,7 @@ export default function BadmintonApp() {
   };
 
   const rankedPlayers = useMemo(() => {
-    return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0));
+    return [...players].sort((a, b) => (b.wins || 0) - (a.wins || 0) || (a.losses || 0) - (b.losses || 0));
   }, [players]);
 
   const rankedAllCourtPlayers = useMemo(() => {
@@ -1201,12 +1235,16 @@ export default function BadmintonApp() {
       const existingPlayer = combinedPlayers.get(playerKey);
       if (existingPlayer) {
         existingPlayer.wins += player.wins || 0;
+        existingPlayer.losses += player.losses || 0;
+        existingPlayer.games += player.games || 0;
         existingPlayer.courts.push(player.courtName);
       } else {
         combinedPlayers.set(playerKey, {
           ...player,
           id: `all-${playerKey}`,
           wins: player.wins || 0,
+          losses: player.losses || 0,
+          games: player.games || 0,
           courts: [player.courtName],
         });
       }
@@ -1289,6 +1327,7 @@ export default function BadmintonApp() {
 
   const handleDrop = async (e, dropIndex) => {
     e.preventDefault();
+    if (!isAdmin) return;
     const dragIdx = draggedQueueIdx;
     setDraggedQueueIdx(null);
     setDragOverQueueIdx(null);
@@ -1392,6 +1431,7 @@ export default function BadmintonApp() {
   };
 
   const handleDeletePlayerClick = (player) => {
+    if (!isAdmin) return;
     if ((player.debt || 0) > 0) {
       showToast(`ไม่สามารถลบ ${player.name} ได้ เนื่องจากยังมียอดค้างจ่าย ${player.debt.toFixed(2)} ฿`, 'error');
       return;
@@ -1429,6 +1469,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteAllQueue = async () => {
+    if (!isAdmin) return;
     setIsProcessing(true);
     try {
       await set(ref(db, `${courtRoot}/queue`), null);
@@ -1477,9 +1518,13 @@ export default function BadmintonApp() {
     }
   };
 
+  // สุ่มจากคนที่ได้เล่นน้อยที่สุดวันนี้ก่อน เพื่อให้ทุกคนได้ลงสนามใกล้เคียงกัน
   const pickRandomPlayer = (candidates, excludedIds = []) => {
     const eligible = candidates.filter(player => !excludedIds.includes(player.id));
-    return eligible.length ? eligible[Math.floor(Math.random() * eligible.length)] : null;
+    if (!eligible.length) return null;
+    const fewest = Math.min(...eligible.map(gamesToday));
+    const leastPlayed = eligible.filter(player => gamesToday(player) === fewest);
+    return leastPlayed[Math.floor(Math.random() * leastPlayed.length)];
   };
 
   const handleRandomPair = () => {
@@ -1568,6 +1613,7 @@ export default function BadmintonApp() {
   };
 
   const handleMoveQueue = async (index, direction) => {
+    if (!isAdmin) return;
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === queue.length - 1) return;
 
@@ -1595,7 +1641,7 @@ export default function BadmintonApp() {
   };
 
   const confirmDeleteQueue = async () => {
-    if (!queueToDelete) return; 
+    if (!queueToDelete || !isAdmin) return;
     setIsProcessing(true);
     try {
       await remove(ref(db, `${courtRoot}/queue/${queueToDelete}`));
@@ -1626,7 +1672,7 @@ export default function BadmintonApp() {
   };
 
   const handleWin = async (winnerTeam) => {
-    if (isResultLocked) return;
+    if (isResultLocked || !court.teamA || !court.teamB) return;
     setIsProcessing(true);
     try {
       const resultTimestamp = Date.now();
@@ -1642,60 +1688,122 @@ export default function BadmintonApp() {
         showToast('กดผลการแข่งขันเร็วเกินไป ระบบล็อกปุ่มไว้ 5 นาที', 'error');
       }
 
+      const winningTeam = winnerTeam === 'A' ? court.teamA : court.teamB;
+      const losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
       let nextTeamA = winnerTeam === 'A' ? court.teamA : null;
       let nextTeamB = winnerTeam === 'B' ? court.teamB : null;
-      let losingTeam = winnerTeam === 'A' ? court.teamB : court.teamA;
-      let winningTeam = winnerTeam === 'A' ? court.teamA : court.teamB;
-
-      const playersUpdates = {};
-      rankedPlayers.forEach((p, index) => {
-        playersUpdates[`${p.id}/previousRank`] = index + 1;
-      });
-
-      if (winningTeam) {
-        winningTeam.forEach((player) => {
-          const dbPlayer = players.find(p => p.id === player.id);
-          playersUpdates[`${player.id}/wins`] = (dbPlayer?.wins || 0) + 1;
-        });
-      }
-
-      let losingQueueKey = null;
-      if (losingTeam) {
-        losingTeam.forEach((player) => {
-          const dbPlayer = players.find(p => p.id === player.id);
-          playersUpdates[`${player.id}/wins`] = Math.max(0, (dbPlayer?.wins || 0) - 1);
-        });
-        losingQueueKey = push(ref(db, `${courtRoot}/queue`)).key;
-      }
-
       const resultUpdates = {};
-      Object.entries(playersUpdates).forEach(([path, value]) => {
-        resultUpdates[`${courtRoot}/players/${path}`] = value;
+      const playerPath = (id, field) => `${courtRoot}/players/${id}/${field}`;
+
+      rankedPlayers.forEach((player, index) => {
+        resultUpdates[playerPath(player.id, 'previousRank')] = index + 1;
       });
+      // Atomic increments: two phones recording at once can't overwrite each other.
+      winningTeam.forEach(player => {
+        resultUpdates[playerPath(player.id, 'wins')] = increment(1);
+        resultUpdates[playerPath(player.id, 'games')] = increment(1);
+        resultUpdates[playerPath(player.id, `dailyGames/${todayKey}`)] = increment(1);
+      });
+      losingTeam.forEach(player => {
+        resultUpdates[playerPath(player.id, 'losses')] = increment(1);
+        resultUpdates[playerPath(player.id, 'games')] = increment(1);
+        resultUpdates[playerPath(player.id, `dailyGames/${todayKey}`)] = increment(1);
+      });
+
+      // ค่าลูกขนไก่ หาร 4 คนที่ลงเล่น (เฉพาะแอดมินเป็นคนบันทึก เพราะเป็นการแก้ยอดเงิน)
+      const shuttles = Math.max(0, Math.round(Number(shuttlesUsed) || 0));
+      const charge = isAdmin && courtSettings.shuttlePrice > 0 && shuttles > 0 ? Math.round((shuttles * courtSettings.shuttlePrice / 4) * 100) / 100 : 0;
+      if (charge) [...winningTeam, ...losingTeam].forEach(player => { resultUpdates[playerPath(player.id, 'debt')] = increment(charge); });
+
       const maxOrder = queue.length > 0 ? Math.max(...queue.map(q => q.sortOrder || 0)) : 0;
-      if (losingQueueKey) {
-        resultUpdates[`${courtRoot}/queue/${losingQueueKey}`] = { pair: losingTeam, sortOrder: maxOrder + 100 };
-      }
+      const losingQueueKey = push(ref(db, `${courtRoot}/queue`)).key;
+      resultUpdates[`${courtRoot}/queue/${losingQueueKey}`] = { pair: losingTeam, sortOrder: maxOrder + 100 };
+      let removedQueue = null;
       if (queue.length > 0) {
         const nextPairObj = queue[0];
-        const nextPair = nextPairObj.pair;
-        if (winnerTeam === 'A') nextTeamB = nextPair;
-        if (winnerTeam === 'B') nextTeamA = nextPair;
+        if (winnerTeam === 'A') nextTeamB = nextPairObj.pair;
+        if (winnerTeam === 'B') nextTeamA = nextPairObj.pair;
+        removedQueue = { id: nextPairObj.id, pair: nextPairObj.pair, sortOrder: nextPairObj.sortOrder || 0 };
         resultUpdates[`${courtRoot}/queue/${nextPairObj.id}`] = null;
       }
 
+      const matchId = push(ref(db, `${courtRoot}/matches`)).key;
+      const matchRecord = {
+        at: resultTimestamp, date: todayKey, teamA: court.teamA, teamB: court.teamB, winner: winnerTeam, shuttles, charge,
+      };
       resultUpdates[`${courtRoot}/court`] = {
         teamA: nextTeamA,
         teamB: nextTeamB,
         lastResultAt: resultTimestamp,
         ...(lockTime && userRole !== 'superAdmin' ? { resultLockStartedAt: lockTime } : {}),
+        // Everything needed to put the court back exactly as it was if this result was a mis-tap.
+        lastResult: {
+          at: resultTimestamp, date: todayKey, matchId, winner: winnerTeam, charge,
+          prevTeamA: court.teamA, prevTeamB: court.teamB, removedQueue, addedQueueId: losingQueueKey,
+          winnerIds: winningTeam.map(player => player.id), loserIds: losingTeam.map(player => player.id),
+        },
       };
       await update(ref(db), resultUpdates);
-      if (!isRapidResult || userRole === 'superAdmin') showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!`, 'success');
+      // History is written separately so a result still saves if the history rules aren't published yet.
+      set(ref(db, `${courtRoot}/matches/${matchId}`), matchRecord).catch(() => {});
+      setShuttlesUsed(1);
+      if (!isRapidResult || userRole === 'superAdmin') showToast(`บันทึกผล: ทีม ${winnerTeam} ชนะ!${charge ? ` · ค่าลูกคนละ ${charge}฿` : ''}`, 'success');
     } catch {
-      showToast('บันึกผลการแข่งขันไม่สำเร็จ', 'error');
+      showToast('บันทึกผลการแข่งขันไม่สำเร็จ', 'error');
     }
     setIsProcessing(false);
+  };
+
+  const handleUndoResult = async () => {
+    const last = court?.lastResult;
+    if (!last) return;
+    if (!isAdmin && (last.charge || Date.now() - last.at > UNDO_WINDOW_MS)) {
+      showToast(last.charge ? 'ผลนี้มีการคิดค่าลูกแล้ว ต้องให้แอดมินย้อนผล' : 'ย้อนผลได้ภายใน 2 นาที หลังจากนั้นต้องให้แอดมินย้อน', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const updates = {};
+      const playerPath = (id, field) => `${courtRoot}/players/${id}/${field}`;
+      (last.winnerIds || []).forEach(id => {
+        updates[playerPath(id, 'wins')] = increment(-1);
+        updates[playerPath(id, 'games')] = increment(-1);
+        updates[playerPath(id, `dailyGames/${last.date}`)] = increment(-1);
+      });
+      (last.loserIds || []).forEach(id => {
+        updates[playerPath(id, 'losses')] = increment(-1);
+        updates[playerPath(id, 'games')] = increment(-1);
+        updates[playerPath(id, `dailyGames/${last.date}`)] = increment(-1);
+      });
+      if (last.charge) [...(last.winnerIds || []), ...(last.loserIds || [])].forEach(id => { updates[playerPath(id, 'debt')] = increment(-last.charge); });
+      if (last.removedQueue) updates[`${courtRoot}/queue/${last.removedQueue.id}`] = { pair: last.removedQueue.pair, sortOrder: last.removedQueue.sortOrder };
+      if (last.addedQueueId) updates[`${courtRoot}/queue/${last.addedQueueId}`] = null;
+      updates[`${courtRoot}/court`] = { teamA: last.prevTeamA || null, teamB: last.prevTeamB || null, lastResultAt: court.lastResultAt || null };
+      await update(ref(db), updates);
+      if (last.matchId) remove(ref(db, `${courtRoot}/matches/${last.matchId}`)).catch(() => {});
+      showToast('ย้อนผลล่าสุดแล้ว สนามกลับเป็นเหมือนก่อนกด', 'success');
+    } catch {
+      showToast('ย้อนผลไม่สำเร็จ', 'error');
+    }
+    setIsProcessing(false);
+  };
+
+  const saveCourtSettings = async next => {
+    if (!isAdmin) return;
+    const feePerPerson = Math.max(0, Number(next.feePerPerson) || 0);
+    const shuttlePrice = Math.max(0, Number(next.shuttlePrice) || 0);
+    try {
+      await set(ref(db, `${courtRoot}/settings`), { feePerPerson, shuttlePrice });
+      showToast('บันทึกราคาแล้ว', 'success');
+    } catch {
+      showToast('บันทึกราคาไม่สำเร็จ (ตรวจสอบว่า publish database rules แล้ว)', 'error');
+    }
+  };
+
+  const setFollowPlayerId = id => {
+    setFollowPlayerIdState(id);
+    try { localStorage.setItem(`badbeaowFollow:${selectedCourtId}`, id); } catch { /* optional */ }
+    if (id && typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
   };
 
   const handleClearCourt = async () => {
@@ -1728,14 +1836,13 @@ export default function BadmintonApp() {
     setIsProcessing(false);
   };
 
-  const handleAddIndividualFee = async (playerId, amount = 10) => {
-    if (!isAdmin) return;
+  const handleAddIndividualFee = async (playerId, amount = courtSettings.feePerPerson) => {
+    if (!isAdmin || !amount) return;
     setIsProcessing(true);
     try {
       const player = players.find(p => p.id === playerId);
       if (!player) return;
-      const playerRef = ref(db, `${courtRoot}/players/${playerId}`);
-      await update(playerRef, { debt: (player.debt || 0) + amount });
+      await update(ref(db, `${courtRoot}/players/${playerId}`), { debt: increment(amount) });
       showToast(`บวกค่าบำรุง ${amount} บาทให้ ${player.name} แล้ว`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
@@ -1743,15 +1850,12 @@ export default function BadmintonApp() {
 
   const handleAddFixedFee = async () => {
     if (!isAdmin) return;
-    if (presentPlayers.length === 0) return;
+    const fee = courtSettings.feePerPerson;
+    if (presentPlayers.length === 0 || !fee) return;
     setIsProcessing(true);
     try {
-      const promises = presentPlayers.map(p => {
-        const playerRef = ref(db, `${courtRoot}/players/${p.id}`);
-        return update(playerRef, { debt: (p.debt || 0) + 10 });
-      });
-      await Promise.all(promises);
-      showToast(`บวกค่าบำรุง 10 บาทให้ ${presentPlayers.length} คนเรียบร้อย!`, 'success');
+      await update(ref(db), Object.fromEntries(presentPlayers.map(p => [`${courtRoot}/players/${p.id}/debt`, increment(fee)])));
+      showToast(`บวกค่าบำรุง ${fee} บาทให้ ${presentPlayers.length} คนเรียบร้อย!`, 'success');
     } catch (error) { console.error(error); }
     setIsProcessing(false);
   };
@@ -1760,13 +1864,10 @@ export default function BadmintonApp() {
     if (!isAdmin) return;
     const amount = parseFloat(totalCourtBill);
     if (presentPlayers.length === 0 || isNaN(amount) || amount <= 0) return;
-    const perPerson = amount / presentPlayers.length;
+    const perPerson = Math.round((amount / presentPlayers.length) * 100) / 100;
     setIsProcessing(true);
     try {
-      await Promise.all(presentPlayers.map(p => {
-        const playerRef = ref(db, `${courtRoot}/players/${p.id}`);
-        return update(playerRef, { debt: (p.debt || 0) + perPerson });
-      }));
+      await update(ref(db), Object.fromEntries(presentPlayers.map(p => [`${courtRoot}/players/${p.id}/debt`, increment(perPerson)])));
       setTotalCourtBill('');
       showToast(`หารค่าคอร์ตคนละ ${perPerson.toFixed(2)} บาทเรียบร้อย!`, 'success');
     } catch (error) { console.error(error); }
@@ -1777,14 +1878,10 @@ export default function BadmintonApp() {
     if (!isAdmin) return;
     const payAmount = parseFloat(paymentInputs[playerId]);
     if (isNaN(payAmount) || payAmount <= 0) return;
-    const player = players.find(p => p.id === playerId);
-    if (!player) return;
-
     setIsProcessing(true);
     try {
-      const newDebt = Math.max(0, (player.debt || 0) - payAmount);
-      const playerRef = ref(db, `${courtRoot}/players/${playerId}`);
-      await update(playerRef, { debt: newDebt });
+      // Transaction so the balance can't drop below zero even if two admins act at once.
+      await runTransaction(ref(db, `${courtRoot}/players/${playerId}/debt`), current => Math.max(0, Math.round(((Number(current) || 0) - payAmount) * 100) / 100));
       setPaymentInputs(prev => ({ ...prev, [playerId]: '' }));
       showToast('ชำระเงินเรียบร้อย หักยอดหนี้อัตโนมัติ!', 'success');
     } catch (error) { console.error(error); }
@@ -1817,6 +1914,46 @@ export default function BadmintonApp() {
     : COURTS;
   const isLoggedInAdmin = Boolean(user?.email && (userRole === 'superAdmin' || assignedCourtIds.length > 0));
   const superAdminCourt = COURTS.find(courtItem => courtItem.id === superAdminCourtId) || COURTS[0];
+
+  // แจ้งเตือนเมื่อคู่ของผู้เล่นที่ติดตามอยู่คิวถัดไป หรือได้ลงสนาม
+  const followStatus = useMemo(() => {
+    if (!followPlayerId) return null;
+    const onTeam = team => Array.isArray(team) && team.some(player => player?.id === followPlayerId);
+    if (onTeam(court?.teamA) || onTeam(court?.teamB)) return { state: 'playing', position: 0 };
+    const index = queue.findIndex(item => onTeam(item.pair));
+    if (index === -1) return { state: 'idle', position: -1 };
+    return { state: index === 0 ? 'next' : 'waiting', position: index + 1 };
+  }, [followPlayerId, court, queue]);
+  const lastAlertRef = useRef('');
+  useEffect(() => {
+    if (!followStatus || (followStatus.state !== 'next' && followStatus.state !== 'playing')) {
+      if (followStatus?.state === 'idle' || followStatus?.state === 'waiting') lastAlertRef.current = '';
+      return;
+    }
+    if (lastAlertRef.current === followStatus.state) return;
+    lastAlertRef.current = followStatus.state;
+    const name = players.find(player => player.id === followPlayerId)?.name || 'คุณ';
+    const message = followStatus.state === 'next' ? `${name} อยู่คิวถัดไป เตรียมตัวได้เลย!` : `${name} ได้ลงสนามแล้ว!`;
+    showToast(message, 'success');
+    try { navigator.vibrate?.([250, 120, 250]); } catch { /* optional */ }
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const audio = new AudioContextClass();
+      [0, 0.22].forEach(offset => {
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0.18, audio.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + offset + 0.18);
+        oscillator.connect(gain).connect(audio.destination);
+        oscillator.start(audio.currentTime + offset);
+        oscillator.stop(audio.currentTime + offset + 0.2);
+      });
+    } catch { /* sound is optional */ }
+    try {
+      if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('BADBEAOW', { body: message });
+    } catch { /* optional */ }
+  }, [followStatus, followPlayerId, players, showToast]);
 
   // Modal คู่มือการใช้งาน (ใช้ทั้งหน้าเลือกคอร์ดและหน้าจัดการคอร์ด)
   const guideModal = showGuide && <UserGuide accent={selectedCourt?.accent} onClose={() => setShowGuide(false)} />;
@@ -1866,6 +2003,8 @@ export default function BadmintonApp() {
     todayKey, toggleCommunityFullscreen, toggleMaintenanceMode, togglePresence, totalCourtBill,
     updatePaymentRequest, user, userRole, visibleCourts,
     myAdminRequest, showToast,
+    courtSettings, saveCourtSettings, todayMatches, gamesToday, shuttlesUsed, setShuttlesUsed,
+    lastResult, canUndoResult, handleUndoResult, followPlayerId, setFollowPlayerId, followStatus, nowTick,
   };
 
   let screen;
