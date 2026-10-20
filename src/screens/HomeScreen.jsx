@@ -1,6 +1,7 @@
 import { Activity, ArrowLeft, BookOpen, LogOut, ShieldCheck, Sparkles } from 'lucide-react';
 import HomeSplash from './home/HomeSplash';
 import CommunityOverlay from './home/CommunityOverlay';
+import ShuttlecockLetterA from '../components/ShuttlecockLetterA';
 import LoginModal from './LoginModal';
 import AdminRequestStatus from './home/AdminRequestStatus';
 import { useApp } from '../context/AppContext';
@@ -20,7 +21,7 @@ export default function HomeScreen() {
       <div className="relative z-10 mx-auto max-w-7xl pt-8 pb-6 text-center">
         <h1 aria-label="BADBEAOW" className="flex items-end justify-center text-5xl md:text-7xl font-black tracking-tight leading-none">
           {'BADBEAOW'.split('').map((letter, index) => letter === 'A' ? (
-            <img key={index} src="/shuttlecock-a.png" alt="" aria-hidden="true" className="h-[1.05em] w-auto rotate-180 mx-[0.02em] drop-shadow-[0_3px_6px_rgba(79,70,229,0.35)]" />
+            <ShuttlecockLetterA key={index} className="h-[0.78em] w-[0.72em] shrink-0 mx-[0.01em] mb-[0.12em]" />
           ) : (
             <span key={index} aria-hidden="true" className="bg-gradient-to-b from-purple-600 to-indigo-600 bg-clip-text text-transparent">{letter}</span>
           ))}
