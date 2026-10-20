@@ -19,9 +19,12 @@ import DeleteAllPlayersModal from './modals/DeleteAllPlayersModal';
 import EditPlayerModal from './modals/EditPlayerModal';
 import LoginModal from '../LoginModal';
 import { AdminGuide } from '../../components/UserGuide';
+import HalloweenCourtIntro from '../../components/HalloweenCourtIntro';
 import { useApp } from '../../context/AppContext';
+import { useTheme } from '../../lib/theme';
 
 export default function CourtScreen() {
+  const [theme] = useTheme();
   const {
     activeTab, guideModal, isAdmin, isDesktop, playerToDelete, playerToEdit, previewSlipImage,
     queueToDelete, selectedCourt, selectedCourtId, setShowAdminGuide, setSplashVideoDone,
@@ -37,6 +40,10 @@ export default function CourtScreen() {
         <div
           className={`splash-screen ${splashExiting ? 'splash-screen-exiting' : ''} fixed inset-0 z-[60] bg-gradient-to-br ${selectedCourt.accent} flex items-center justify-center px-6 text-white overflow-hidden`}
         >
+          {theme === 'halloween' ? (
+            <HalloweenCourtIntro courtName={selectedCourt.name} onDone={setSplashVideoDone} />
+          ) : (
+          <>
           <video autoPlay muted playsInline onEnded={() => setSplashVideoDone(true)} onError={() => setSplashVideoDone(true)} className="pointer-events-none absolute inset-0 h-full w-full object-cover object-[center_28%]" aria-hidden="true">
             <source src="/badbeaow_intro.mp4" type="video/mp4" />
           </video>
@@ -54,6 +61,8 @@ export default function CourtScreen() {
               กำลังเตรียมระบบ...
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
 
