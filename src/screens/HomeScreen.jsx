@@ -1,6 +1,5 @@
 import { Activity, ArrowLeft, BookOpen, LogOut, ShieldCheck, Sparkles } from 'lucide-react';
 import HomeSplash from './home/HomeSplash';
-import ShuttlecockIcon from '../components/ShuttlecockIcon';
 import CommunityOverlay from './home/CommunityOverlay';
 import LoginModal from './LoginModal';
 import AdminRequestStatus from './home/AdminRequestStatus';
@@ -19,13 +18,13 @@ export default function HomeScreen() {
       {showSplash && <HomeSplash />}
 
       <div className="relative z-10 mx-auto max-w-7xl pt-8 pb-6 text-center">
-        <div className="flex justify-center mb-5">
-          <div className="relative flex items-center justify-center w-24 h-24 rounded-[2rem] bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-700 shadow-xl shadow-indigo-200 transform -rotate-6">
-            <div className="absolute inset-0 rounded-[2rem] bg-white/20 backdrop-blur-sm border border-white/30" />
-            <ShuttlecockIcon size={52} className="text-white drop-shadow-md relative z-10" />
-          </div>
-        </div>
-        <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">BADBEAOW</h1>
+        <h1 aria-label="BADBEAOW" className="flex items-end justify-center text-5xl md:text-7xl font-black tracking-tight leading-none">
+          {'BADBEAOW'.split('').map((letter, index) => letter === 'A' ? (
+            <img key={index} src="/shuttlecock-a.png" alt="" aria-hidden="true" className="h-[1.05em] w-auto rotate-180 mx-[0.02em] drop-shadow-[0_3px_6px_rgba(79,70,229,0.35)]" />
+          ) : (
+            <span key={index} aria-hidden="true" className="bg-gradient-to-b from-purple-600 to-indigo-600 bg-clip-text text-transparent">{letter}</span>
+          ))}
+        </h1>
         <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>
       </div>
 
