@@ -2,6 +2,7 @@ import { useId } from 'react';
 
 // Bold letter "A" drawn as an upside-down shuttlecock: the cork is the apex,
 // the legs are feathers with scalloped tips, and the crossbar is the thread band.
+// eslint-disable-next-line react/prop-types
 export default function ShuttlecockLetterA({ className = '' }) {
   const id = useId().replace(/:/g, '');
   const fill = `url(#${id}-fill)`;
@@ -10,8 +11,8 @@ export default function ShuttlecockLetterA({ className = '' }) {
     <svg viewBox="0 -2 100 108" className={className} aria-hidden="true">
       <defs>
         <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#9333ea" />
-          <stop offset="100%" stopColor="#4f46e5" />
+          <stop offset="0%" style={{ stopColor: 'rgb(var(--c-purple-600))' }} />
+          <stop offset="100%" style={{ stopColor: 'rgb(var(--wordmark-to))' }} />
         </linearGradient>
       </defs>
 

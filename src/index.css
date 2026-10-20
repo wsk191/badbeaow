@@ -1,3 +1,38 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Halloween theme decorations */
+@keyframes halloween-fly {
+  0% { transform: translate(0, 0) scaleX(-1); }
+  25% { transform: translate(30vw, -3vh) scaleX(-1); }
+  50% { transform: translate(60vw, 2vh) scaleX(-1); }
+  75% { transform: translate(90vw, -2vh) scaleX(-1); }
+  100% { transform: translate(115vw, 0) scaleX(-1); }
+}
+@keyframes halloween-float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-18px) rotate(4deg); }
+}
+@keyframes halloween-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.55; }
+  90% { opacity: 0.55; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+}
+@keyframes halloween-dangle {
+  0%, 100% { transform: translateY(-30px); }
+  50% { transform: translateY(10px); }
+}
+@keyframes halloween-glow {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(251, 146, 60, 0.5)); }
+  50% { filter: drop-shadow(0 0 16px rgba(251, 146, 60, 0.9)); }
+}
+.halloween-bat { animation: halloween-fly 16s linear infinite; }
+.halloween-ghost { animation: halloween-float 4.5s ease-in-out infinite; }
+.halloween-candy { animation: halloween-fall 15s linear infinite; }
+.halloween-spider { animation: halloween-dangle 6s ease-in-out infinite; }
+.halloween-pumpkin, .halloween-moon { animation: halloween-glow 2.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .halloween-decor * { animation: none !important; }
+}

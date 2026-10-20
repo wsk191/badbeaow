@@ -23,7 +23,7 @@ export default function HomeScreen() {
           {'BADBEAOW'.split('').map((letter, index) => letter === 'A' ? (
             <ShuttlecockLetterA key={index} className="h-[0.78em] w-[0.72em] shrink-0 mx-[0.01em] mb-[0.12em]" />
           ) : (
-            <span key={index} aria-hidden="true" className="bg-gradient-to-b from-purple-600 to-indigo-600 bg-clip-text text-transparent">{letter}</span>
+            <span key={index} aria-hidden="true" className="bg-gradient-to-b from-purple-600 to-[rgb(var(--wordmark-to))] bg-clip-text text-transparent">{letter}</span>
           ))}
         </h1>
         <p className="text-sm text-gray-500 mt-2">เลือกคอร์ดเพื่อเข้าสู่ระบบจัดการคิว</p>

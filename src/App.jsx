@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { ref, onValue, push, update, remove, set, get, runTransaction, query, limitToLast, orderByChild, endAt, increment } from 'firebase/database';
 import UserGuide from './components/UserGuide';
+import HalloweenDecor from './components/HalloweenDecor';
+import { useTheme } from './lib/theme';
 import MaintenanceScreen from './screens/MaintenanceScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -12,6 +14,7 @@ import { logVisit } from './lib/accessLog';
 import { COURTS, INACTIVITY_TIMEOUT_MS, getChatWindowStart, getExercisePlan, getTodayKey, isCommunityAvatarExpired, isMaintenanceScheduleActive } from './lib/appConfig';
 
 export default function BadmintonApp() {
+  const [theme] = useTheme();
   const [selectedCourtId, setSelectedCourtId] = useState(null);
   const [activeTab, setActiveTab] = useState('queue');
   const [user, setUser] = useState(null);
@@ -248,12 +251,8 @@ export default function BadmintonApp() {
     };
   }, [user, handleLogout]);
 
-  // Inject Tailwind CSS, Fonts, Styles & Court Themes
+  // Inject Fonts & Styles (court color themes live in tailwind.config.js)
   useEffect(() => {
-    const tailwindScript = document.createElement('script');
-    tailwindScript.src = 'https://cdn.tailwindcss.com';
-    document.head.appendChild(tailwindScript);
-
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap';
     link.rel = 'stylesheet';
@@ -262,8 +261,8 @@ export default function BadmintonApp() {
     const style = document.createElement('style');
     style.innerHTML = `
       @keyframes highlight-glow {
-        0%, 100% { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); background-color: #ffffff; border-color: #f3f4f6; transform: scale(1); }
-        50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); background-color: #faf5ff; border-color: #9333ea; transform: scale(1.02); }
+        0%, 100% { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); background-color: rgb(var(--bg-white, 255 255 255)); border-color: rgb(var(--bd-gray-100, var(--c-gray-100))); transform: scale(1); }
+        50% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); background-color: rgb(var(--bg-purple-50, var(--c-purple-50))); border-color: rgb(var(--c-purple-600)); transform: scale(1.02); }
       }
       .queue-highlight {
         animation: highlight-glow 1s ease-in-out 3;
@@ -359,45 +358,6 @@ export default function BadmintonApp() {
       .drag-handle {
           touch-action: none;
       }
-      .court-theme-court-2 .text-purple-600 { color: #b45309 !important; }
-      .court-theme-court-2 .text-purple-700 { color: #92400e !important; }
-      .court-theme-court-2 .text-purple-500 { color: #d97706 !important; }
-      .court-theme-court-2 .text-purple-300 { color: #fed7aa !important; }
-      .court-theme-court-2 .bg-purple-50 { background-color: #fffbeb !important; }
-      .court-theme-court-2 .bg-purple-100 { background-color: #fef3c7 !important; }
-      .court-theme-court-2 .bg-purple-500 { background-color: #d97706 !important; }
-      .court-theme-court-2 .bg-purple-600 { background-color: #d97706 !important; }
-      .court-theme-court-2 .bg-purple-700 { background-color: #b45309 !important; }
-      .court-theme-court-2 .hover\\:bg-purple-700:hover { background-color: #b45309 !important; }
-      .court-theme-court-2 .border-purple-100 { border-color: #fde68a !important; }
-      .court-theme-court-2 .border-purple-200 { border-color: #fcd34d !important; }
-      .court-theme-court-2 .border-purple-500 { border-color: #d97706 !important; }
-      .court-theme-court-3 .text-purple-600 { color: #047857 !important; }
-      .court-theme-court-3 .text-purple-700 { color: #065f46 !important; }
-      .court-theme-court-3 .text-purple-500 { color: #059669 !important; }
-      .court-theme-court-3 .text-purple-300 { color: #a7f3d0 !important; }
-      .court-theme-court-3 .bg-purple-50 { background-color: #ecfdf5 !important; }
-      .court-theme-court-3 .bg-purple-100 { background-color: #d1fae5 !important; }
-      .court-theme-court-3 .bg-purple-500 { background-color: #059669 !important; }
-      .court-theme-court-3 .bg-purple-600 { background-color: #059669 !important; }
-      .court-theme-court-3 .bg-purple-700 { background-color: #047857 !important; }
-      .court-theme-court-3 .hover\\:bg-purple-700:hover { background-color: #047857 !important; }
-      .court-theme-court-3 .border-purple-100 { border-color: #a7f3d0 !important; }
-      .court-theme-court-3 .border-purple-200 { border-color: #6ee7b7 !important; }
-      .court-theme-court-3 .border-purple-500 { border-color: #059669 !important; }
-      .court-theme-court-4 .text-purple-600 { color: #0369a1 !important; }
-      .court-theme-court-4 .text-purple-700 { color: #075985 !important; }
-      .court-theme-court-4 .text-purple-500 { color: #0284c7 !important; }
-      .court-theme-court-4 .text-purple-300 { color: #bae6fd !important; }
-      .court-theme-court-4 .bg-purple-50 { background-color: #f0f9ff !important; }
-      .court-theme-court-4 .bg-purple-100 { background-color: #e0f2fe !important; }
-      .court-theme-court-4 .bg-purple-500 { background-color: #0284c7 !important; }
-      .court-theme-court-4 .bg-purple-600 { background-color: #0284c7 !important; }
-      .court-theme-court-4 .bg-purple-700 { background-color: #0369a1 !important; }
-      .court-theme-court-4 .hover\\:bg-purple-700:hover { background-color: #0369a1 !important; }
-      .court-theme-court-4 .border-purple-100 { border-color: #bae6fd !important; }
-      .court-theme-court-4 .border-purple-200 { border-color: #7dd3fc !important; }
-      .court-theme-court-4 .border-purple-500 { border-color: #0284c7 !important; }
     `;
     document.head.appendChild(style);
 
@@ -421,7 +381,6 @@ export default function BadmintonApp() {
     };
 
     return () => {
-      document.head.removeChild(tailwindScript);
       document.head.removeChild(link);
       document.head.removeChild(style);
       document.head.removeChild(polyfillScript);
@@ -2010,5 +1969,10 @@ export default function BadmintonApp() {
     screen = <CourtScreen />;
   }
 
-  return <AppContext.Provider value={appContextValue}>{screen}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={appContextValue}>
+      {screen}
+      {theme === 'halloween' && <HalloweenDecor aboveNav={Boolean(selectedCourtId)} />}
+    </AppContext.Provider>
+  );
 }
